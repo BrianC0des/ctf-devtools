@@ -19,8 +19,45 @@ def main():
     parser.add_argument("url", nargs="?", default="http://127.0.0.1:8000", help="Target URL (e.g. http://challenge.ctf:8080)")
     parser.add_argument("--scan-only", action="store_true", help="Run fast CLI recon scan without launching TUI")
     parser.add_argument("--decode", help="Quickly decode a string or token in CLI")
+    parser.add_argument("--update", action="store_true", help="Check and pull latest updates from GitHub")
 
     args = parser.parse_args()
+
+    if args.update:
+        import subprocess, pathlib, shutil
+        print("[*] Checking for CTF DevTools updates...")
+        candidates = [
+            pathlib.Path.home() / ".ctf-devtools",
+            pathlib.Path(__file__).resolve().parent.parent
+        ]
+        repo_dir = None
+        for c in candidates:
+            if (c / ".git").exists():
+                repo_dir = c
+                break
+        
+        if not repo_dir:
+            print("[!] Could not locate git repository for ctf-devtools.")
+            print("    Run the one-line updater instead:")
+            print("    curl -sSL https://raw.githubusercontent.com/BrianC0des/ctf-devtools/main/install.sh | bash")
+            sys.exit(1)
+
+        print(f"[+] Found repository at {repo_dir}")
+        print("[*] Pulling latest updates from GitHub...")
+        pull_res = subprocess.run(["git", "-C", str(repo_dir), "pull"], capture_output=True, text=True)
+        print(pull_res.stdout.strip())
+        if pull_res.returncode != 0:
+            print("[!] Git pull failed:", pull_res.stderr.strip())
+            sys.exit(1)
+        
+        print("[*] Reinstalling package...")
+        pip_bin = sys.executable
+        sub_res = subprocess.run([pip_bin, "-m", "pip", "install", "-e", str(repo_dir), "--no-warn-script-location"], capture_output=True, text=True)
+        if sub_res.returncode == 0:
+            print("[+] Successfully updated CTF DevTools to the latest version!")
+        else:
+            print("[!] Pip install warning/error:\n", sub_res.stderr.strip())
+        sys.exit(0)
 
     if args.decode:
         print(f"[*] Analyzing token/string: {args.decode}\n")

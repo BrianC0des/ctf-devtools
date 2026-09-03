@@ -1,7 +1,9 @@
 from __future__ import annotations
-"""Main Textual TUI Application for CTF DevTools with modern transparent aesthetics."""
+"""Main Textual TUI Application for CTF DevTools with universal text & clean 2-tier workspace navigation."""
 import asyncio
 import json
+import os
+import pathlib
 import re
 import urllib.parse
 import httpx
@@ -15,6 +17,7 @@ from textual.widgets import (
 from textual.widgets._tree import TreeNode
 from textual.binding import Binding
 
+from . import __version__
 from .flags import FlagTracker
 from .decoders import (
     base64_decode, base64_encode, hex_decode, hex_encode,
@@ -37,7 +40,6 @@ from .curl_runner import (
     CURL_TEMPLATES, render_curl_template, execute_curl_command,
     parse_curl_to_repeater, curl_to_python_script, format_curl_command
 )
-from . import __version__
 from .sqli_runner import (
     DBMS_PAYLOADS, tamper_inline_comments, tamper_mysql_version_comments,
     tamper_random_case, tamper_space_to_newline, tamper_space_to_tab,
@@ -59,9 +61,16 @@ Screen {
 #top-bar {
     height: 3;
     padding: 0 1;
-    margin: 0;
     background: transparent;
     border-bottom: solid #3b4261;
+    align: left middle;
+}
+
+#ws-bar {
+    height: 3;
+    padding: 0 1;
+    background: transparent;
+    border-bottom: solid #24283b;
     align: left middle;
 }
 
@@ -76,7 +85,7 @@ Screen {
 }
 
 #target-url {
-    width: 42%;
+    width: 38;
     border: none;
     height: 1;
     background: #1f2335;
@@ -96,7 +105,8 @@ Screen {
     text-style: bold;
     border: none;
     height: 1;
-    min-width: 12;
+    width: auto;
+    min-width: 11;
     margin: 0 1;
     padding: 0 1;
 }
@@ -113,7 +123,8 @@ Screen {
     text-style: bold;
     border: none;
     height: 1;
-    min-width: 12;
+    width: auto;
+    min-width: 11;
     margin: 0 1;
     padding: 0 1;
 }
@@ -130,7 +141,8 @@ Screen {
     text-style: bold;
     border: none;
     height: 1;
-    min-width: 10;
+    width: auto;
+    min-width: 9;
     margin: 0 1;
     padding: 0 1;
 }
@@ -139,6 +151,35 @@ Screen {
     background: #414868;
     color: #ffffff;
     text-style: bold;
+}
+
+.btn-ws {
+    background: #1f2335;
+    color: #565f89;
+    text-style: bold;
+    border: none;
+    height: 1;
+    width: auto;
+    min-width: 14;
+    margin-right: 1;
+    padding: 0 1;
+}
+
+.btn-ws:hover {
+    background: #24283b;
+    color: #bb9af7;
+}
+
+.btn-ws-active {
+    background: #7aa2f7;
+    color: #11121d;
+    text-style: bold;
+    border: none;
+    height: 1;
+    width: auto;
+    min-width: 14;
+    margin-right: 1;
+    padding: 0 1;
 }
 
 .flag-badge {
@@ -153,248 +194,188 @@ Screen {
 
 #inp-session {
     width: 14;
-    border: none;
     height: 1;
     background: #1f2335;
-    color: #ffffff;
+    border: none;
     padding: 0 1;
-    margin: 0 1;
+    margin-left: 1;
 }
 
-#inp-session:focus {
-    background: #24283b;
-}
-
-/* Tabbed Content */
 TabbedContent {
-    background: transparent;
-    padding: 0;
-    margin: 0;
     height: 1fr;
+    background: transparent;
 }
 
 TabPane {
+    padding: 1 1;
     background: transparent;
-    padding: 0;
-    height: 1fr;
 }
 
-Tabs {
-    background: transparent;
+/* Sub-tabs inside each workspace */
+TabbedContent > Tabs {
     height: 2;
-    border-bottom: solid #3b4261;
+    background: transparent;
+    border-bottom: solid #24283b;
 }
 
-Tab {
+TabbedContent > Tabs > Tab {
+    height: 2;
     background: transparent;
     color: #565f89;
     text-style: bold;
     padding: 0 2;
-    height: 2;
     border: none;
 }
 
-Tab:hover {
+TabbedContent > Tabs > Tab:hover {
     color: #bb9af7;
-    background: #24283b;
+    background: #1f2335;
 }
 
-Tab.-active {
+TabbedContent > Tabs > Tab.-active {
     color: #7aa2f7;
-    background: transparent;
-    border-bottom: tall #7aa2f7;
+    background: #24283b;
     text-style: bold;
+    border-bottom: tall #7aa2f7;
 }
 
-/* Card & Panels */
 .card-panel {
     border: round #3b4261;
     background: transparent;
-    padding: 1;
-    margin: 0 1 0 0;
+    padding: 1 1;
+    margin: 0 1;
     height: 1fr;
 }
 
 .card-title {
-    color: #7dcfff;
     text-style: bold;
-    padding-bottom: 1;
-}
-
-.pane-half {
-    width: 50%;
-    height: 1fr;
+    color: #7aa2f7;
+    margin-bottom: 1;
 }
 
 .sub-bar {
-    height: 1;
+    height: 3;
+    align: left middle;
     margin-bottom: 1;
-    align-vertical: middle;
 }
 
-/* Text Areas & Inputs */
-TextArea {
-    border: round #3b4261;
-    background: transparent;
-    color: #c0caf5;
-    height: 1fr;
-}
-
-TextArea:focus {
-    border: round #7aa2f7;
-}
-
-Input {
+.sub-bar Input {
+    width: 28;
     height: 1;
     border: none;
-    background: #1f2335;
-    color: #c0caf5;
-    padding: 0 1;
-    margin: 0;
-}
-
-Input:focus {
-    background: #292e42;
-    color: #7dcfff;
-}
-
-#rep-method {
-    width: 8;
-    margin-right: 1;
-}
-
-#inp-dom-search {
-    width: 45;
-    margin-right: 1;
-}
-
-#rep-url {
-    width: 1fr;
-}
-
-#ws-url {
-    width: 1fr;
-    margin-right: 1;
-}
-
-#ws-payload {
-    width: 1fr;
-    margin-right: 1;
-}
-
-#oob-port {
-    width: 10;
-    margin-right: 1;
-}
-
-#inp-cookie-name {
-    width: 14;
-    margin-right: 1;
-}
-
-#inp-cookie-val {
-    width: 1fr;
-    margin-right: 1;
-}
-
-#inp-hdr-name {
-    width: 18;
-    margin-right: 1;
-}
-
-#inp-hdr-val {
-    width: 1fr;
-    margin-right: 1;
-}
-
-#rep-fuzz-range {
-    width: 14;
-    margin-right: 1;
-}
-
-/* Tables */
-DataTable {
-    background: transparent;
-    border: round #3b4261;
-    height: 1fr;
-}
-
-DataTable:focus {
-    border: round #7aa2f7;
-}
-
-DataTable > .datatable--header {
     background: #24283b;
-    color: #7dcfff;
-    text-style: bold;
-}
-
-DataTable > .datatable--cursor {
-    background: #364a82;
     color: #ffffff;
-    text-style: bold;
+    margin-right: 1;
 }
 
-/* Tree */
-Tree {
-    background: transparent;
-    border: round #3b4261;
+.pane-half {
+    width: 1fr;
     height: 1fr;
 }
 
-Tree:focus {
-    border: round #7aa2f7;
-}
-
-Tree > .tree--cursor {
-    background: #364a82;
-    color: #ffffff;
-    text-style: bold;
+.h-short {
+    height: 8;
 }
 
 .status-alert {
-    color: #73daca;
-    text-style: bold;
-    padding: 0 1;
+    color: #ff9e64;
+    text-style: italic;
+    margin-left: 1;
 }
 
 .status-meta {
     color: #7dcfff;
+    text-style: italic;
+    margin-bottom: 1;
+}
+
+DataTable {
+    background: #16161e 90%;
+    border: none;
+    height: 1fr;
+    margin-bottom: 1;
+}
+
+DataTable > .datatable--header {
+    background: #24283b;
+    color: #7aa2f7;
     text-style: bold;
-    height: 1;
-    margin-bottom: 0;
 }
 
-.h-short {
-    height: 6;
-    min-height: 4;
+DataTable > .datatable--cursor {
+    background: #3d59a1;
+    color: #ffffff;
+    text-style: bold;
 }
 
-Footer {
-    background: transparent;
-    color: #565f89;
+Tree {
+    background: #16161e 90%;
+    border: none;
+    height: 1fr;
+    color: #c0caf5;
+    padding: 1;
+}
+
+Tree:focus {
+    border: none;
+}
+
+Tree > .tree--cursor {
+    background: #3d59a1;
+    color: #ffffff;
+    text-style: bold;
+}
+
+TextArea {
+    background: #16161e 95%;
+    color: #c0caf5;
+    border: none;
+    height: 1fr;
+}
+
+TextArea:focus {
+    border: none;
+    background: #16161e;
 }
 """
 
+WORKSPACES = [
+    ("tab-inspector", "btn-ws-1", "1: INSPECTOR"),
+    ("tab-network", "btn-ws-2", "2: NETWORK"),
+    ("tab-repeater", "btn-ws-3", "3: REPEATER"),
+    ("tab-exploit", "btn-ws-4", "4: EXPLOIT"),
+    ("tab-scripting", "btn-ws-5", "5: SCRIPT"),
+    ("tab-decoders", "btn-ws-6", "6: DECODE"),
+]
+
 class CTFDevToolsApp(App):
-    CSS = APP_CSS
+    """Modern Offensive Web CTF DevTools Terminal Workstation."""
+
     TITLE = f"CTF DevTools v{__version__}"
     SUB_TITLE = "Terminal Offensive Workstation"
-    
+    CSS = APP_CSS
+
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit", show=True),
+        Binding("1", "jump_workspace('tab-inspector')", "[1] Inspect", show=True),
+        Binding("2", "jump_workspace('tab-network')", "[2] Network", show=True),
+        Binding("3", "jump_workspace('tab-repeater')", "[3] Repeat", show=True),
+        Binding("4", "jump_workspace('tab-exploit')", "[4] Exploit", show=True),
+        Binding("5", "jump_workspace('tab-scripting')", "[5] Script", show=True),
+        Binding("6", "jump_workspace('tab-decoders')", "[6] Decode", show=True),
         Binding("ctrl+a", "analyze_target", "Analyze", show=True),
         Binding("ctrl+s", "send_repeater", "Send", show=True),
         Binding("ctrl+r", "run_scanner", "Recon", show=True),
-        Binding("ctrl+j", "run_js", "Run JS", show=True),
-        Binding("ctrl+e", "exec_curl", "Run cURL", show=True),
-        Binding("ctrl+b", "exec_php", "Run PHP", show=True),
+        Binding("ctrl+e", "exec_curl", "cURL", show=True),
+        Binding("ctrl+b", "exec_php", "PHP", show=True),
+        Binding("ctrl+j", "run_js", "JS", show=True),
     ]
 
     def __init__(self, initial_url: str = "http://127.0.0.1:8000"):
         super().__init__()
         init_platform()
         self.initial_url = initial_url
+        self.active_workspace_id = "tab-inspector" if initial_url else "tab-repeater"
         self.flag_tracker = FlagTracker()
         self.cookie_storage = CookieAndStorageManager()
         self.network_logger = NetworkLogger()
@@ -430,265 +411,347 @@ class CTFDevToolsApp(App):
         with Horizontal(id="top-bar"):
             yield Label("TARGET", id="target-badge")
             yield Input(value=self.initial_url, placeholder="http://target.ctf:8080", id="target-url")
-            yield Button(" Analyze", id="btn-analyze", classes="btn-primary")
-            yield Button(" Recon", id="btn-recon-top", classes="btn-accent")
-            yield Label(" 0 FLAGS", id="lbl-flags", classes="flag-badge")
+            yield Button("Analyze", id="btn-analyze", classes="btn-primary")
+            yield Button("Recon", id="btn-recon-top", classes="btn-accent")
+            yield Label("FLAG: 0", id="lbl-flags", classes="flag-badge")
             yield Input(value="challenge_1", placeholder="Session", id="inp-session")
-            yield Button(" Save", id="btn-save-session", classes="btn-secondary")
+            yield Button("Save", id="btn-save-session", classes="btn-secondary")
 
-        with TabbedContent(initial="tab-sources" if self.initial_url else "tab-recon"):
-            # TAB 1: Recon & Sensitive Probes
-            with TabPane(" Recon", id="tab-recon"):
-                with Horizontal():
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" Sensitive Paths & Probes (Click/Arrow to View)", classes="card-title")
-                        yield DataTable(id="tbl-recon")
-                        yield Label(" Tech Stack & Disclosure Headers", classes="card-title")
-                        yield TextArea(id="txt-tech-stack", read_only=True, classes="h-short")
+        with Horizontal(id="ws-bar"):
+            for ws_id, btn_id, label in WORKSPACES:
+                cls = "btn-ws-active" if ws_id == self.active_workspace_id else "btn-ws"
+                yield Button(label, id=btn_id, classes=cls)
 
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" Probe File Content Inspector", classes="card-title")
-                        yield Label("Selected File: None", id="lbl-probe-file", classes="status-meta")
+        with TabbedContent(initial=self.active_workspace_id, id="root-tabs"):
+            # =========================================================
+            # WORKSPACE 1: INSPECTOR (DOM Tree, Recon, Sources, Comments)
+            # =========================================================
+            with TabPane("1. INSPECTOR", id="tab-inspector"):
+                with TabbedContent(initial="subtab-dom"):
+                    # SUBTAB 1.1: DOM Tree
+                    with TabPane("DOM Elements", id="subtab-dom"):
+                        with Vertical(classes="card-panel"):
+                            with Horizontal(classes="sub-bar"):
+                                yield Input(placeholder="Filter tag, id, class, or text (e.g. input, #secret, hidden)", id="inp-dom-search")
+                                yield Button("Filter", id="btn-dom-search", classes="btn-primary")
+                                yield Button("Hidden Only", id="btn-dom-hidden", classes="btn-secondary")
+                                yield Button("Copy HTML", id="btn-dom-copy", classes="btn-secondary")
+                                yield Button("Re-Parse", id="btn-dom-refresh", classes="btn-accent")
+                            with Horizontal():
+                                with Vertical(classes="pane-half"):
+                                    yield Label("HTML DOM Tree (Click/Arrow to Inspect)", classes="card-title")
+                                    yield Tree("Document (Empty)", id="tree-dom")
+                                with Vertical(classes="pane-half"):
+                                    yield Label("Selected Element Attributes & Flags:", classes="card-title")
+                                    yield TextArea(id="txt-node-attrs", read_only=True, classes="h-short")
+                                    yield Label("Element Outer HTML Snippet:", classes="card-title")
+                                    yield TextArea(id="txt-node-html", read_only=True)
+
+                    # SUBTAB 1.2: Recon Probes
+                    with TabPane("Recon Probes", id="subtab-recon"):
+                        with Horizontal():
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Sensitive Paths & Sensitive Probes", classes="card-title")
+                                yield DataTable(id="tbl-recon")
+                                yield Label("Server Tech Stack & Disclosed Headers", classes="card-title")
+                                yield TextArea(id="txt-tech-stack", read_only=True, classes="h-short")
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Probe File Content Inspector", classes="card-title")
+                                yield Label("Selected File: None", id="lbl-probe-file", classes="status-meta")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Button("Fetch Full", id="btn-fetch-probe", classes="btn-primary")
+                                    yield Button("To Repeater", id="btn-probe-rep", classes="btn-secondary")
+                                    yield Button("cURL", id="btn-probe-curl", classes="btn-secondary")
+                                    yield Button("Scan Secrets", id="btn-scan-probe", classes="btn-accent")
+                                yield TextArea(id="txt-probe-content", read_only=True)
+
+                    # SUBTAB 1.3: Sources & Loaded Files
+                    with TabPane("Sources & Files", id="subtab-sources"):
+                        with Horizontal():
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Loaded Assets & Discovered Files", classes="card-title")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Button("Fetch / View", id="btn-fetch-asset", classes="btn-primary")
+                                    yield Button("Download", id="btn-download-asset", classes="btn-accent")
+                                    yield Button("Scan Secrets", id="btn-scan-asset", classes="btn-secondary")
+                                    yield Button("Probe .map", id="btn-probe-map", classes="btn-secondary")
+                                yield DataTable(id="tbl-assets")
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("File Inspector", id="lbl-asset-info", classes="card-title")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Button("cURL", id="btn-asset-curl", classes="btn-secondary")
+                                    yield Button("To Repeater", id="btn-asset-rep", classes="btn-secondary")
+                                yield TextArea(id="txt-asset-content", read_only=True)
+
+                    # SUBTAB 1.4: Comments & Secrets
+                    with TabPane("Comments & Secrets", id="subtab-comments"):
+                        with Horizontal():
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Harvested HTML & JS Comments", classes="card-title")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Button("Refresh Comments", id="btn-gather-comments", classes="btn-primary")
+                                    yield Button("Scan Secrets", id="btn-scan-comments", classes="btn-accent")
+                                yield TextArea(id="txt-comments", read_only=True)
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Discovered Forms & Hidden Inputs", classes="card-title")
+                                yield TextArea(id="txt-forms", read_only=True)
+
+            # =========================================================
+            # WORKSPACE 2: NETWORK (Traffic, Cookies, Spider, WebSockets)
+            # =========================================================
+            with TabPane("2. NETWORK", id="tab-network"):
+                with TabbedContent(initial="subtab-netlog"):
+                    # SUBTAB 2.1: Traffic Log
+                    with TabPane("Traffic History", id="subtab-netlog"):
+                        with Horizontal():
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("HTTP/S Traffic History", classes="card-title")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Button("Replay in Repeater", id="btn-net-replay", classes="btn-primary")
+                                    yield Button("Export cURL", id="btn-net-curl", classes="btn-secondary")
+                                    yield Button("CSRF PoC", id="btn-net-csrf", classes="btn-accent")
+                                    yield Button("Clear History", id="btn-net-clear", classes="btn-secondary")
+                                yield DataTable(id="tbl-network")
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Request & Response Inspector", classes="card-title")
+                                yield TextArea(id="txt-net-details", read_only=True)
+
+                    # SUBTAB 2.2: Storage & Cookies
+                    with TabPane("Storage & Cookies", id="subtab-storage"):
+                        with Horizontal():
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Active Cookie Jar", classes="card-title")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Input(placeholder="Cookie Name", id="inp-cookie-name")
+                                    yield Input(placeholder="Value", id="inp-cookie-val")
+                                    yield Button("+ Set", id="btn-set-cookie", classes="btn-primary")
+                                    yield Button("Delete", id="btn-del-cookie", classes="btn-secondary")
+                                    yield Button("Decode", id="btn-decode-cookie", classes="btn-accent")
+                                yield DataTable(id="tbl-cookies")
+                                yield Label("Decoded Cookie Value (JWT / Flask / Base64):", classes="card-title")
+                                yield TextArea(id="txt-cookie-decoded", read_only=True)
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Global Auth Headers", classes="card-title")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Input(value="Authorization", placeholder="Header Name", id="inp-hdr-name")
+                                    yield Input(placeholder="Bearer token", id="inp-hdr-val")
+                                    yield Button("+ Set Header", id="btn-set-hdr", classes="btn-primary")
+                                    yield Button("Clear", id="btn-del-hdr", classes="btn-secondary")
+                                yield TextArea(id="txt-global-headers", read_only=True)
+                                yield Label("Client-Side Storage (localStorage / sessionStorage):", classes="card-title")
+                                yield DataTable(id="tbl-storage")
+
+                    # SUBTAB 2.3: Site Crawler
+                    with TabPane("Site Crawler", id="subtab-crawler"):
                         with Horizontal(classes="sub-bar"):
-                            yield Button(" Fetch Full", id="btn-fetch-probe", classes="btn-primary")
-                            yield Button(" To Repeater", id="btn-probe-rep", classes="btn-secondary")
-                            yield Button(" cURL", id="btn-probe-curl", classes="btn-secondary")
-                            yield Button(" Scan Secrets", id="btn-scan-probe", classes="btn-accent")
-                        yield TextArea(id="txt-probe-content", read_only=True)
+                            yield Button("Start Spider", id="btn-spider", classes="btn-primary")
+                            yield Label("Recursively maps internal routes and extracts JavaScript endpoints", classes="status-alert")
+                        with Horizontal():
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Crawled Routes", classes="card-title")
+                                yield DataTable(id="tbl-crawled")
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Discovered API Endpoints", classes="card-title")
+                                yield TextArea(id="txt-js-routes", read_only=True)
 
-            # TAB 2: Elements (Full DOM Tree Inspector)
-            with TabPane(" Elements", id="tab-elements"):
+                    # SUBTAB 2.4: WebSockets
+                    with TabPane("WebSockets", id="subtab-ws"):
+                        with Vertical(classes="card-panel"):
+                            yield Label("WebSocket Stream", classes="card-title")
+                            with Horizontal(classes="sub-bar"):
+                                yield Input(value="ws://127.0.0.1:8000/ws", id="ws-url")
+                                yield Button("Connect", id="btn-ws-connect", classes="btn-primary")
+                                yield Button("Disconnect", id="btn-ws-disconnect", classes="btn-secondary")
+                            yield Label("Live Frames:")
+                            yield TextArea(id="txt-ws-log", read_only=True)
+                            yield Label("Send Frame:")
+                            with Horizontal(classes="sub-bar"):
+                                yield Input(value='{"action": "ping"}', id="ws-payload")
+                                yield Button("Send", id="btn-ws-send", classes="btn-primary")
+
+            # =========================================================
+            # WORKSPACE 3: REPEATER & CURL STUDIO
+            # =========================================================
+            with TabPane("3. REPEATER", id="tab-repeater"):
+                with TabbedContent(initial="subtab-repeater"):
+                    # SUBTAB 3.1: HTTP Composer
+                    with TabPane("Request Composer", id="subtab-repeater"):
+                        with Horizontal():
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Request Composer (Supports FUZZ marker)", classes="card-title")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Input(value="GET", id="rep-method", placeholder="Method")
+                                    yield Input(value=self.initial_url, id="rep-url", placeholder="URL")
+                                yield Label("Headers:")
+                                yield TextArea("User-Agent: CTF-DevTools/1.0\nAccept: */*\n", id="rep-headers")
+                                yield Label("Body:")
+                                yield TextArea("", id="rep-body")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Button("Send (Ctrl+S)", id="btn-rep-send", classes="btn-primary")
+                                    yield Button("cURL", id="btn-rep-curl", classes="btn-secondary")
+                                    yield Button("Python", id="btn-rep-python", classes="btn-secondary")
+                                    yield Button("Fuzz (100)", id="btn-rep-fuzz", classes="btn-accent")
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Server Response", classes="card-title")
+                                yield Label("Status: Ready | Time: -- ms | Length: --", id="lbl-rep-status", classes="status-meta")
+                                yield TextArea(id="rep-response", read_only=True)
+
+                    # SUBTAB 3.2: cURL Studio
+                    with TabPane("cURL Studio", id="subtab-curl"):
+                        with Horizontal():
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("cURL Command Studio", classes="card-title")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Button("Execute (Ctrl+E)", id="btn-curl-exec", classes="btn-primary")
+                                    yield Button("Format", id="btn-curl-fmt", classes="btn-secondary")
+                                    yield Button("To Repeater", id="btn-curl-to-rep", classes="btn-secondary")
+                                    yield Button("To Python", id="btn-curl-to-py", classes="btn-secondary")
+                                    yield Button("Clear", id="btn-curl-clear", classes="btn-secondary")
+                                yield TextArea(f'curl -i -k "{self.initial_url}"', id="txt-curl-cmd")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Label("CTF Bypass Templates:", classes="card-title")
+                                    yield Button("Load Template", id="btn-curl-load-tpl", classes="btn-accent")
+                                yield DataTable(id="tbl-curl-templates")
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Response & Execution Output", classes="card-title")
+                                yield Label("Status: Ready | Latency: -- ms | Code: --", id="lbl-curl-meta", classes="status-meta")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Button("Copy Command", id="btn-curl-copy-cmd", classes="btn-secondary")
+                                    yield Button("Copy Output", id="btn-curl-copy-resp", classes="btn-secondary")
+                                    yield Button("Scan Flags", id="btn-curl-scan-flags", classes="btn-accent")
+                                yield TextArea(id="txt-curl-resp", read_only=True)
+
+            # =========================================================
+            # WORKSPACE 4: EXPLOIT HUB (SQLi, PHP Sandbox, Payload Vault)
+            # =========================================================
+            with TabPane("4. EXPLOIT HUB", id="tab-exploit"):
+                with TabbedContent(initial="subtab-sqli"):
+                    # SUBTAB 4.1: SQL Injection
+                    with TabPane("SQL Injection", id="subtab-sqli"):
+                        with Horizontal():
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("SQLi Dialect & Attack Templates", classes="card-title")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Button("SQLite", id="btn-sqli-sqlite", classes="btn-primary")
+                                    yield Button("MySQL", id="btn-sqli-mysql", classes="btn-secondary")
+                                    yield Button("Postgres", id="btn-sqli-postgres", classes="btn-secondary")
+                                    yield Button("MSSQL", id="btn-sqli-mssql", classes="btn-secondary")
+                                    yield Button("Oracle", id="btn-sqli-oracle", classes="btn-secondary")
+                                yield DataTable(id="tbl-sqli-templates")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Label("Column Fuzz:", classes="card-title")
+                                    yield Button("- Col", id="btn-sqli-col-dec", classes="btn-secondary")
+                                    yield Button("+ Col", id="btn-sqli-col-inc", classes="btn-secondary")
+                                    yield Button("UNION Probe", id="btn-sqli-gen-union", classes="btn-primary")
+                                    yield Button("ORDER BY", id="btn-sqli-gen-orderby", classes="btn-accent")
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("SQL Payload & WAF Bypass Tamper", classes="card-title")
+                                yield Label("Active DBMS: SQLite | Columns: 3", id="lbl-sqli-info", classes="status-meta")
+                                yield TextArea("' UNION SELECT null,sqlite_version()--", id="txt-sqli-editor")
+                                yield Label("WAF Tamper Encoders (Click to Transform):", classes="card-title")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Button("/**/ Space", id="btn-tamper-comment", classes="btn-secondary")
+                                    yield Button("/*!MySQL*/", id="btn-tamper-version", classes="btn-secondary")
+                                    yield Button("0xHex Str", id="btn-tamper-hex", classes="btn-secondary")
+                                    yield Button("CHAR()", id="btn-tamper-char", classes="btn-secondary")
+                                    yield Button("aLtErCaSe", id="btn-tamper-case", classes="btn-secondary")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Button("%0a Newline", id="btn-tamper-nl", classes="btn-secondary")
+                                    yield Button("%09 Tab", id="btn-tamper-tab", classes="btn-secondary")
+                                    yield Button("URL Enc", id="btn-tamper-url", classes="btn-secondary")
+                                    yield Button("Double URL", id="btn-tamper-durl", classes="btn-secondary")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Button("To Repeater", id="btn-sqli-to-rep", classes="btn-primary")
+                                    yield Button("cURL", id="btn-sqli-to-curl", classes="btn-secondary")
+                                    yield Button("Copy Payload", id="btn-sqli-copy", classes="btn-accent")
+
+                    # SUBTAB 4.2: PHP Sandbox
+                    with TabPane("PHP Sandbox", id="subtab-php"):
+                        with Horizontal():
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Interactive PHP Script Sandbox", classes="card-title")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Button("Run PHP (Ctrl+B)", id="btn-php-run", classes="btn-primary")
+                                    yield Button("To Repeater", id="btn-php-to-rep", classes="btn-secondary")
+                                    yield Button("Clear", id="btn-php-clear", classes="btn-secondary")
+                                    yield Button("Copy Code", id="btn-php-copy", classes="btn-accent")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Button("WebShell", id="btn-php-tpl-shell", classes="btn-secondary")
+                                    yield Button("POP Chain", id="btn-php-tpl-pop", classes="btn-secondary")
+                                    yield Button("0e Fuzzer", id="btn-php-tpl-hash", classes="btn-secondary")
+                                    yield Button("Preload Bypass", id="btn-php-tpl-preload", classes="btn-secondary")
+                                yield TextArea(PHP_STARTER_TEMPLATES["Web Shell / Command Execution"], id="txt-php-editor")
+                                yield Label("Magic Hashes (0e... Loose Comparisons '=='):", classes="card-title")
+                                yield DataTable(id="tbl-php-hashes")
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Execution Output & Results", classes="card-title")
+                                yield Label("PHP Status: Ready | Latency: -- ms", id="lbl-php-meta", classes="status-meta")
+                                yield TextArea(id="txt-php-output", read_only=True)
+                                yield Label("PHP LFI Wrappers & Filter Chains (Click to Load):", classes="card-title")
+                                yield DataTable(id="tbl-php-wrappers")
+
+                    # SUBTAB 4.3: Payload Vault
+                    with TabPane("Payload Vault", id="subtab-payloads"):
+                        with Horizontal():
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Universal CTF Payload Vault", classes="card-title")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Input(placeholder="Search payloads (xss, ssti, shell, bypass, aws...)", id="inp-payload-search")
+                                    yield Button("Search", id="btn-payload-search", classes="btn-primary")
+                                    yield Button("Reset", id="btn-payload-reset", classes="btn-secondary")
+                                yield DataTable(id="tbl-payloads")
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Selected Payload String", classes="card-title")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Button("To Repeater", id="btn-payload-to-rep", classes="btn-primary")
+                                    yield Button("cURL", id="btn-payload-to-curl", classes="btn-secondary")
+                                    yield Button("Copy String", id="btn-payload-copy", classes="btn-accent")
+                                yield TextArea(id="txt-payload-view", read_only=False)
+                                yield Label("Description & Exploitation Notes:", classes="card-title")
+                                yield TextArea(id="txt-payload-notes", read_only=True, classes="h-short")
+
+            # =========================================================
+            # WORKSPACE 5: SCRIPTING & OOB (JS Console, Callbacks)
+            # =========================================================
+            with TabPane("5. SCRIPTING", id="tab-scripting"):
+                with TabbedContent(initial="subtab-js"):
+                    # SUBTAB 5.1: JS Console
+                    with TabPane("JS Console", id="subtab-js"):
+                        with Horizontal():
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Interactive JavaScript Editor", classes="card-title")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Button("Run (Ctrl+J)", id="btn-js-run", classes="btn-primary")
+                                    yield Button("Preload Scripts", id="btn-js-preload", classes="btn-secondary")
+                                    yield Button("Deobfuscate", id="btn-js-deobf", classes="btn-secondary")
+                                    yield Button("Clear", id="btn-js-clear", classes="btn-accent")
+                                yield TextArea("// JS expressions or custom crypto solvers:\nconsole.log('Location:', location.href);\nconsole.log('Cookies:', document.cookie);\n", id="txt-js-input")
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Execution Output & Console Logs", classes="card-title")
+                                yield Label("Status: Ready | Time: -- ms", id="lbl-js-status", classes="status-meta")
+                                yield TextArea(id="txt-js-output", read_only=True)
+
+                    # SUBTAB 5.2: OOB Callbacks
+                    with TabPane("OOB Callbacks", id="subtab-oob"):
+                        with Horizontal():
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Local OOB HTTP Listener", classes="card-title")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Input(value="9999", id="oob-port", placeholder="Port")
+                                    yield Button("Start", id="btn-oob-start", classes="btn-primary")
+                                    yield Button("Stop", id="btn-oob-stop", classes="btn-secondary")
+                                yield Label("Incoming Requests:")
+                                yield DataTable(id="tbl-oob")
+                            with Vertical(classes="card-panel pane-half"):
+                                yield Label("Captured Flags Archive", classes="card-title")
+                                yield TextArea(id="txt-all-flags", read_only=True)
+
+            # =========================================================
+            # WORKSPACE 6: DECODERS (CyberChef-Lite)
+            # =========================================================
+            with TabPane("6. DECODERS", id="tab-decoders"):
                 with Vertical(classes="card-panel"):
-                    with Horizontal(classes="sub-bar"):
-                        yield Input(placeholder="Filter tag, id, class, or text (e.g. input, #secret, hidden)", id="inp-dom-search")
-                        yield Button(" Filter", id="btn-dom-search", classes="btn-primary")
-                        yield Button("🔒 Hidden Only", id="btn-dom-hidden", classes="btn-secondary")
-                        yield Button(" Copy OuterHTML", id="btn-dom-copy", classes="btn-secondary")
-                        yield Button(" Re-Parse", id="btn-dom-refresh", classes="btn-accent")
-                    with Horizontal():
-                        with Vertical(classes="pane-half"):
-                            yield Label(" HTML DOM Tree (Click/Arrow to Inspect)", classes="card-title")
-                            yield Tree("Document (Empty)", id="tree-dom")
-                        with Vertical(classes="pane-half"):
-                            yield Label("Selected Element Attributes & Flags:", classes="card-title")
-                            yield TextArea(id="txt-node-attrs", read_only=True, classes="h-short")
-                            yield Label("Raw Outer HTML:", classes="card-title")
-                            yield TextArea(id="txt-node-html", read_only=True)
-
-            # TAB 3: Comments & Secrets
-            with TabPane(" Comments & Secrets", id="tab-dom"):
-                with Horizontal():
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" Comments Gatherer (HTML + JS + CSS)", classes="card-title")
-                        with Horizontal(classes="sub-bar"):
-                            yield Button(" Refresh", id="btn-gather-comments", classes="btn-primary")
-                            yield Button(" Suspicious Only", id="btn-filter-comments", classes="btn-secondary")
-                        yield TextArea(id="txt-comments", read_only=True)
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" Forms & Hidden Inputs", classes="card-title")
-                        with Horizontal(classes="sub-bar"):
-                            yield Button(" Generate CSRF PoC", id="btn-form-csrf", classes="btn-accent")
-                        yield TextArea(id="txt-forms", read_only=True)
-
-            # TAB 3: Sources & Loaded Files (.js, .css, .json, .map, docs)
-            with TabPane(" Sources & Files", id="tab-sources"):
-                with Horizontal():
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" Loaded Assets & Discovered Files", classes="card-title")
-                        with Horizontal(classes="sub-bar"):
-                            yield Button(" Fetch / View", id="btn-fetch-asset", classes="btn-primary")
-                            yield Button("⬇ Download", id="btn-download-asset", classes="btn-accent")
-                            yield Button(" Scan Secrets", id="btn-scan-asset", classes="btn-secondary")
-                            yield Button(" Probe .map", id="btn-probe-map", classes="btn-secondary")
-                        yield DataTable(id="tbl-assets")
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" File Inspector", id="lbl-asset-info", classes="card-title")
-                        with Horizontal(classes="sub-bar"):
-                            yield Button(" cURL", id="btn-asset-curl", classes="btn-secondary")
-                            yield Button(" To Repeater", id="btn-asset-rep", classes="btn-secondary")
-                        yield TextArea(id="txt-asset-content", read_only=True)
-
-            # TAB 4: Storage & Cookies (Cookie Jar, Global Auth, Storage Harvester)
-            with TabPane(" Storage & Cookies", id="tab-storage"):
-                with Horizontal():
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" Active Cookie Jar (Auto-Captured & Decoded)", classes="card-title")
-                        with Horizontal(classes="sub-bar"):
-                            yield Input(placeholder="Cookie Name", id="inp-cookie-name")
-                            yield Input(placeholder="Value", id="inp-cookie-val")
-                            yield Button(" Set", id="btn-set-cookie", classes="btn-primary")
-                            yield Button(" Del", id="btn-del-cookie", classes="btn-secondary")
-                            yield Button(" Decode", id="btn-decode-cookie", classes="btn-accent")
-                        yield DataTable(id="tbl-cookies")
-                        yield Label("Decoded Cookie Value (JWT / Flask / Base64):", classes="card-title")
-                        yield TextArea(id="txt-cookie-decoded", read_only=True)
-
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" Global Auth Headers (Auto-Injected)", classes="card-title")
-                        with Horizontal(classes="sub-bar"):
-                            yield Input(value="Authorization", placeholder="Header Name", id="inp-hdr-name")
-                            yield Input(placeholder="Bearer token / 127.0.0.1", id="inp-hdr-val")
-                            yield Button(" Set Header", id="btn-set-hdr", classes="btn-primary")
-                            yield Button(" Clear", id="btn-del-hdr", classes="btn-secondary")
-                        yield TextArea(id="txt-global-headers", read_only=True)
-                        yield Label(" Client-Side Storage Harvester (localStorage / sessionStorage)", classes="card-title")
-                        yield DataTable(id="tbl-storage")
-
-            # TAB 5: Crawler & Spider
-            with TabPane(" Crawler", id="tab-crawler"):
-                with Horizontal(classes="sub-bar"):
-                    yield Button(" Start Spider", id="btn-spider", classes="btn-primary")
-                    yield Label("Recursively crawls internal routes and extracts JavaScript endpoints", classes="status-alert")
-                with Horizontal():
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" Crawled Routes", classes="card-title")
-                        yield DataTable(id="tbl-crawled")
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" Discovered API Endpoints", classes="card-title")
-                        yield TextArea(id="txt-js-routes", read_only=True)
-
-            # TAB 5: Repeater & Fuzzer
-            with TabPane(" Repeater", id="tab-repeater"):
-                with Horizontal():
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" Request Composer (Supports FUZZ / fzz)", classes="card-title")
-                        with Horizontal(classes="sub-bar"):
-                            yield Input(value="GET", id="rep-method", placeholder="Method")
-                            yield Input(value=self.initial_url, id="rep-url", placeholder="URL")
-                        yield Label("Headers:")
-                        yield TextArea("User-Agent: CTF-DevTools/1.0\nAccept: */*\n", id="rep-headers")
-                        yield Label("Body:")
-                        yield TextArea("", id="rep-body")
-                        with Horizontal(classes="sub-bar"):
-                            yield Button(" Send (Ctrl+S)", id="btn-rep-send", classes="btn-primary")
-                            yield Button(" cURL", id="btn-rep-curl", classes="btn-secondary")
-                            yield Button(" Python", id="btn-rep-python", classes="btn-secondary")
-                            yield Button(" CSRF", id="btn-rep-csrf", classes="btn-secondary")
-                            yield Input(value="0..30", placeholder="0..30 or list", id="rep-fuzz-range")
-                            yield Button(" Fuzz (FUZZ)", id="btn-rep-fuzz", classes="btn-accent")
-                    
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" Response Inspector", classes="card-title")
-                        yield Label("Status: - | Latency: - | Size: -", id="rep-meta")
-                        yield Label("", id="rep-flag-alert", classes="status-alert")
-                        yield Label("Headers:")
-                        yield TextArea(id="rep-resp-headers", read_only=True)
-                        yield Label("Body:")
-                        yield TextArea(id="rep-resp-body", read_only=True)
-
-            # TAB: cURL Workbench & Premade CTF Scripts
-            with TabPane(" cURL", id="tab-curl"):
-                with Horizontal():
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" cURL Command Workshop", classes="card-title")
-                        with Horizontal(classes="sub-bar"):
-                            yield Button(" Execute (Ctrl+E)", id="btn-curl-exec", classes="btn-primary")
-                            yield Button("⇥ Format", id="btn-curl-fmt", classes="btn-secondary")
-                            yield Button(" To Repeater", id="btn-curl-to-rep", classes="btn-secondary")
-                            yield Button("🐍 To Python", id="btn-curl-to-py", classes="btn-secondary")
-                            yield Button(" Clear", id="btn-curl-clear", classes="btn-secondary")
-                        yield TextArea(f'curl -i -k "{self.initial_url}"', id="txt-curl-cmd")
-                        with Horizontal(classes="sub-bar"):
-                            yield Label(" CTF cURL Templates:", classes="card-title")
-                            yield Button(" Load Template", id="btn-curl-load-tpl", classes="btn-accent")
-                        yield DataTable(id="tbl-curl-templates")
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" Response & Execution Output", classes="card-title")
-                        yield Label("Status: Ready | Latency: -- ms | Code: --", id="lbl-curl-meta", classes="status-meta")
-                        with Horizontal(classes="sub-bar"):
-                            yield Button(" Copy Command", id="btn-curl-copy-cmd", classes="btn-secondary")
-                            yield Button(" Copy Output", id="btn-curl-copy-resp", classes="btn-secondary")
-                            yield Button(" Scan Flags", id="btn-curl-scan-flags", classes="btn-accent")
-                        yield TextArea(id="txt-curl-resp", read_only=True)
-
-            # TAB: SQL Injection Workbench & WAF Encoders
-            with TabPane("💉 SQLi", id="tab-sqli"):
-                with Horizontal():
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label("💉 SQLi Dialect & Attack Templates", classes="card-title")
-                        with Horizontal(classes="sub-bar"):
-                            yield Button("SQLite", id="btn-sqli-sqlite", classes="btn-primary")
-                            yield Button("MySQL", id="btn-sqli-mysql", classes="btn-secondary")
-                            yield Button("Postgres", id="btn-sqli-postgres", classes="btn-secondary")
-                            yield Button("MSSQL", id="btn-sqli-mssql", classes="btn-secondary")
-                            yield Button("Oracle", id="btn-sqli-oracle", classes="btn-secondary")
-                        yield DataTable(id="tbl-sqli-templates")
-                        with Horizontal(classes="sub-bar"):
-                            yield Label("Column Fuzz:", classes="card-title")
-                            yield Button("- Col", id="btn-sqli-col-dec", classes="btn-secondary")
-                            yield Button("+ Col", id="btn-sqli-col-inc", classes="btn-secondary")
-                            yield Button("⚡ UNION Probe", id="btn-sqli-gen-union", classes="btn-primary")
-                            yield Button("⚡ ORDER BY", id="btn-sqli-gen-orderby", classes="btn-accent")
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" SQL Payload & WAF Bypass Tamper", classes="card-title")
-                        yield Label("Active DBMS: SQLite | Columns: 3", id="lbl-sqli-info", classes="status-meta")
-                        yield TextArea("' UNION SELECT null,sqlite_version()--", id="txt-sqli-editor")
-                        yield Label("WAF Tamper Encoders (Click to Transform):", classes="card-title")
-                        with Horizontal(classes="sub-bar"):
-                            yield Button("/**/ Space", id="btn-tamper-comment", classes="btn-secondary")
-                            yield Button("/*!MySQL*/", id="btn-tamper-version", classes="btn-secondary")
-                            yield Button("0xHex Str", id="btn-tamper-hex", classes="btn-secondary")
-                            yield Button("CHAR()", id="btn-tamper-char", classes="btn-secondary")
-                            yield Button("aLtErCaSe", id="btn-tamper-case", classes="btn-secondary")
-                        with Horizontal(classes="sub-bar"):
-                            yield Button("%0a Newline", id="btn-tamper-nl", classes="btn-secondary")
-                            yield Button("%09 Tab", id="btn-tamper-tab", classes="btn-secondary")
-                            yield Button("URL Enc", id="btn-tamper-url", classes="btn-secondary")
-                            yield Button("Double URL", id="btn-tamper-durl", classes="btn-secondary")
-                        with Horizontal(classes="sub-bar"):
-                            yield Button(" To Repeater", id="btn-sqli-to-rep", classes="btn-primary")
-                            yield Button(" cURL", id="btn-sqli-to-curl", classes="btn-secondary")
-                            yield Button("📋 Copy Payload", id="btn-sqli-copy", classes="btn-accent")
-
-            # TAB: PHP Sandbox Environment & CTF Gadgets
-            with TabPane("🐘 PHP", id="tab-php"):
-                with Horizontal():
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label("🐘 Interactive PHP Script Sandbox", classes="card-title")
-                        with Horizontal(classes="sub-bar"):
-                            yield Button(" Run PHP (Ctrl+B)", id="btn-php-run", classes="btn-primary")
-                            yield Button(" To Repeater", id="btn-php-to-rep", classes="btn-secondary")
-                            yield Button(" Clear", id="btn-php-clear", classes="btn-secondary")
-                            yield Button("📋 Copy Code", id="btn-php-copy", classes="btn-accent")
-                        with Horizontal(classes="sub-bar"):
-                            yield Button(" WebShell", id="btn-php-tpl-shell", classes="btn-secondary")
-                            yield Button(" POP Chain", id="btn-php-tpl-pop", classes="btn-secondary")
-                            yield Button(" 0e Fuzzer", id="btn-php-tpl-hash", classes="btn-secondary")
-                            yield Button(" Preload Bypass", id="btn-php-tpl-preload", classes="btn-secondary")
-                        yield TextArea(PHP_STARTER_TEMPLATES["Web Shell / Command Execution"], id="txt-php-editor")
-                        yield Label("Magic Hashes (0e... Loose Comparisons '=='):", classes="card-title")
-                        yield DataTable(id="tbl-php-hashes")
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" Execution Output & Results", classes="card-title")
-                        yield Label("PHP Status: Ready | Latency: -- ms", id="lbl-php-meta", classes="status-meta")
-                        yield TextArea(id="txt-php-output", read_only=True)
-                        yield Label("PHP LFI Wrappers & Filter Chains (Click to Load):", classes="card-title")
-                        yield DataTable(id="tbl-php-wrappers")
-
-            # TAB: Universal Payload Vault
-            with TabPane("🎯 Payloads", id="tab-payloads"):
-                with Horizontal():
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label("🎯 Universal CTF Payload Vault", classes="card-title")
-                        with Horizontal(classes="sub-bar"):
-                            yield Input(placeholder="Search payloads (xss, ssti, shell, bypass, aws...)", id="inp-payload-search")
-                            yield Button(" Search", id="btn-payload-search", classes="btn-primary")
-                            yield Button(" Reset", id="btn-payload-reset", classes="btn-secondary")
-                        yield DataTable(id="tbl-payloads")
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" Selected Payload String", classes="card-title")
-                        with Horizontal(classes="sub-bar"):
-                            yield Button(" To Repeater", id="btn-payload-to-rep", classes="btn-primary")
-                            yield Button(" cURL", id="btn-payload-to-curl", classes="btn-secondary")
-                            yield Button("📋 Copy String", id="btn-payload-copy", classes="btn-accent")
-                        yield TextArea(id="txt-payload-view", read_only=False)
-                        yield Label("Description & Exploitation Notes:", classes="card-title")
-                        yield TextArea(id="txt-payload-notes", read_only=True, classes="h-short")
-
-            # TAB 6: Decoders (CyberChef-Lite)
-            with TabPane(" Decoders", id="tab-decoders"):
-                with Vertical(classes="card-panel"):
-                    yield Label(" Input Payload / Token / Hash:", classes="card-title")
+                    yield Label("Input Payload / Token / Hash:", classes="card-title")
                     yield TextArea("", id="dec-input")
                     with Horizontal(classes="sub-bar"):
                         yield Button("B64 Dec", id="btn-b64-dec", classes="btn-secondary")
@@ -701,84 +764,18 @@ class CTFDevToolsApp(App):
                         yield Button("JWT Parse", id="btn-jwt", classes="btn-primary")
                         yield Button("Flask Cookie", id="btn-flask", classes="btn-accent")
                         yield Button("Hash ID", id="btn-hash", classes="btn-secondary")
-                    yield Label(" Decoded Output:", classes="card-title")
+                    yield Label("Decoded Output:", classes="card-title")
                     yield TextArea(id="dec-output", read_only=True)
-
-            # TAB 7: WebSockets
-            with TabPane(" WebSockets", id="tab-ws"):
-                with Vertical(classes="card-panel"):
-                    yield Label(" WebSocket Stream", classes="card-title")
-                    with Horizontal(classes="sub-bar"):
-                        yield Input(value="ws://127.0.0.1:8000/ws", id="ws-url")
-                        yield Button(" Connect", id="btn-ws-connect", classes="btn-primary")
-                        yield Button(" Disconnect", id="btn-ws-disconnect", classes="btn-secondary")
-                    yield Label("Live Frames:")
-                    yield TextArea(id="txt-ws-log", read_only=True)
-                    yield Label("Send Frame:")
-                    with Horizontal(classes="sub-bar"):
-                        yield Input(value='{"action": "ping"}', id="ws-payload")
-                        yield Button(" Send", id="btn-ws-send", classes="btn-primary")
-
-            # TAB 8: OOB Callbacks & Flags
-            with TabPane(" Callbacks", id="tab-oob"):
-                with Horizontal():
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" Local OOB HTTP Listener", classes="card-title")
-                        with Horizontal(classes="sub-bar"):
-                            yield Input(value="9999", id="oob-port", placeholder="Port")
-                            yield Button(" Start", id="btn-oob-start", classes="btn-primary")
-                            yield Button(" Stop", id="btn-oob-stop", classes="btn-secondary")
-                        yield Label("Incoming Requests:")
-                        yield DataTable(id="tbl-oob")
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" Captured Flags Archive", classes="card-title")
-                        yield TextArea(id="txt-all-flags", read_only=True)
-
-            # TAB 9: JS Console & Deobfuscator
-            with TabPane(" Console", id="tab-js-console"):
-                with Horizontal():
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label(" Interactive JavaScript Editor", classes="card-title")
-                        with Horizontal(classes="sub-bar"):
-                            yield Button(" Run (Ctrl+J)", id="btn-js-run", classes="btn-primary")
-                            yield Button(" Preload Scripts", id="btn-js-preload", classes="btn-secondary")
-                            yield Button(" Deobfuscate", id="btn-js-deobf", classes="btn-secondary")
-                            yield Button(" Clear", id="btn-js-clear", classes="btn-accent")
-                        yield TextArea("// Type JS expressions, custom crypto solvers, or challenge functions here:\nconsole.log('Location:', location.href);\nconsole.log('Cookies:', document.cookie);\n", id="txt-js-input")
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label("Terminal Output & Evaluated Result", classes="card-title")
-                        yield Label("Runtime: Node.js (Sandbox Active)", id="lbl-js-status", classes="status-meta")
-                        yield TextArea(id="txt-js-output", read_only=True)
-
-            # TAB 10: Live Network Traffic History
-            with TabPane("󰒋 Network", id="tab-network"):
-                with Horizontal():
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label("󰒋 HTTP Traffic History", classes="card-title")
-                        with Horizontal(classes="sub-bar"):
-                            yield Button(" To Repeater", id="btn-net-rep", classes="btn-primary")
-                            yield Button(" cURL", id="btn-net-curl", classes="btn-secondary")
-                            yield Button(" CSRF PoC", id="btn-net-csrf", classes="btn-secondary")
-                            yield Button(" Clear", id="btn-net-clear", classes="btn-accent")
-                        yield DataTable(id="tbl-network")
-                    with Vertical(classes="card-panel pane-half"):
-                        yield Label("Request & Response Inspector", classes="card-title")
-                        yield Label("Select any traffic row on the left to inspect", id="lbl-net-meta", classes="status-meta")
-                        yield Label("Request Headers & Body:")
-                        yield TextArea(id="txt-net-req", read_only=True, classes="h-short")
-                        yield Label("Response Headers & Body:")
-                        yield TextArea(id="txt-net-resp", read_only=True)
-
-            # TAB 11: Notes & Scratchpad
-            with TabPane(" Notes", id="tab-notes"):
-                with Vertical(classes="card-panel"):
-                    yield Label(" Challenge Notes & Scratchpad", classes="card-title")
-                    yield TextArea("## Target Notes\n- Discovered endpoints:\n- User credentials:\n- Attack vectors:\n", id="txt-notes")
 
         yield Footer()
 
-    def on_mount(self):
-        # Setup Tables
+    def on_mount(self) -> None:
+        try:
+            from textual.widgets._tabbed_content import ContentTabs
+            self.query_one("#root-tabs", TabbedContent).get_child_by_type(ContentTabs).display = False
+        except Exception:
+            pass
+
         tbl_recon = self.query_one("#tbl-recon", DataTable)
         tbl_recon.add_columns("STATUS", "PATH", "SIZE", "FLAGS", "SNIPPET")
         
@@ -796,6 +793,7 @@ class CTFDevToolsApp(App):
 
         tbl_oob = self.query_one("#tbl-oob", DataTable)
         tbl_oob.add_columns("TIME", "IP", "METHOD", "PATH", "BODY")
+
         tbl_network = self.query_one("#tbl-network", DataTable)
         tbl_network.add_columns("ID", "TIME", "METHOD", "STATUS", "BYTES", "MS", "URL")
 
@@ -836,6 +834,25 @@ class CTFDevToolsApp(App):
         # Automatically analyze target immediately on startup
         if self.initial_url and self.initial_url.strip().startswith(("http://", "https://")):
             asyncio.create_task(self.action_analyze_url())
+
+    def action_jump_workspace(self, workspace_id: str) -> None:
+        try:
+            self.active_workspace_id = workspace_id
+            root = self.query_one("#root-tabs", TabbedContent)
+            root.active = workspace_id
+            
+            # Update active pill button style
+            for ws, bid, _ in WORKSPACES:
+                btn = self.query_one(f"#{bid}", Button)
+                if ws == workspace_id:
+                    btn.remove_class("btn-ws")
+                    btn.add_class("btn-ws-active")
+                else:
+                    btn.remove_class("btn-ws-active")
+                    btn.add_class("btn-ws")
+            self.notify(f"Workspace: {workspace_id.replace('tab-', '').upper()}")
+        except Exception:
+            pass
 
     def _populate_sqli_table(self, dbms: str):
         tbl = self.query_one("#tbl-sqli-templates", DataTable)
@@ -886,7 +903,7 @@ class CTFDevToolsApp(App):
         try:
             all_flags = self.flag_tracker.get_all_flags()
             lbl = self.query_one("#lbl-flags", Label)
-            lbl.update(f"🚩 {len(all_flags)} FLAGS")
+            lbl.update(f"FLAG: {len(all_flags)}")
             
             txt_flags = self.query_one("#txt-all-flags", TextArea)
             if all_flags:
@@ -938,7 +955,20 @@ class CTFDevToolsApp(App):
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id
-        if bid == "btn-analyze":
+        # Workspace Navigation Buttons
+        if bid == "btn-ws-1":
+            self.action_jump_workspace("tab-inspector")
+        elif bid == "btn-ws-2":
+            self.action_jump_workspace("tab-network")
+        elif bid == "btn-ws-3":
+            self.action_jump_workspace("tab-repeater")
+        elif bid == "btn-ws-4":
+            self.action_jump_workspace("tab-exploit")
+        elif bid == "btn-ws-5":
+            self.action_jump_workspace("tab-scripting")
+        elif bid == "btn-ws-6":
+            self.action_jump_workspace("tab-decoders")
+        elif bid == "btn-analyze":
             await self.action_analyze_url()
         elif bid == "btn-recon-top":
             await self.action_run_scanner()
@@ -1090,8 +1120,8 @@ class CTFDevToolsApp(App):
         # Comments gatherer buttons
         elif bid == "btn-gather-comments":
             await self.action_refresh_comments()
-        elif bid == "btn-filter-comments":
-            self.action_filter_suspicious_comments()
+        elif bid == "btn-scan-comments":
+            self.action_scan_comments_secrets()
         # Storage & Cookie buttons
         elif bid == "btn-set-cookie":
             self.action_set_cookie()
@@ -1119,11 +1149,11 @@ class CTFDevToolsApp(App):
         elif bid == "btn-rot13":
             self.handle_decode(rot13)
         elif bid == "btn-jwt":
-            self.handle_jwt()
+            self.handle_jwt_parse()
         elif bid == "btn-flask":
-            self.handle_flask()
+            self.handle_flask_session()
         elif bid == "btn-hash":
-            self.handle_hash()
+            self.handle_hash_id()
         # WebSocket buttons
         elif bid == "btn-ws-connect":
             await self.action_ws_connect()
@@ -1131,85 +1161,67 @@ class CTFDevToolsApp(App):
             await self.action_ws_disconnect()
         elif bid == "btn-ws-send":
             await self.action_ws_send()
-        # OOB listener
+        # OOB buttons
         elif bid == "btn-oob-start":
             await self.action_oob_start()
         elif bid == "btn-oob-stop":
             await self.action_oob_stop()
+        # Session buttons
         elif bid == "btn-save-session":
             self.action_save_session()
         # JS Console buttons
         elif bid == "btn-js-run":
             await self.action_run_js()
         elif bid == "btn-js-preload":
-            await self.action_preload_target_scripts()
+            await self.action_preload_js_scripts()
         elif bid == "btn-js-deobf":
             self.action_deobfuscate_js()
         elif bid == "btn-js-clear":
-            self.action_clear_js_output()
-        # Network History buttons
-        elif bid == "btn-net-clear":
-            self.action_clear_network_history()
-        elif bid == "btn-net-rep":
-            self.action_send_network_to_repeater()
+            self.query_one("#txt-js-input", TextArea).text = ""
+        # Network Log buttons
+        elif bid == "btn-net-replay":
+            self.action_replay_network_entry()
         elif bid == "btn-net-curl":
-            self.action_copy_network_curl()
+            self.action_export_network_curl()
         elif bid == "btn-net-csrf":
-            self.action_generate_network_csrf()
-        # CSRF PoC buttons
-        elif bid == "btn-form-csrf":
-            self.action_generate_form_csrf()
-        elif bid == "btn-rep-csrf":
-            self.action_generate_repeater_csrf()
+            self.action_generate_csrf_poc()
+        elif bid == "btn-net-clear":
+            self.network_logger.clear()
+            self.refresh_network_table()
 
+    # ---------------------------------------------------------
+    # Core Analysis & Recon
+    # ---------------------------------------------------------
     async def action_analyze_url(self):
         url = self.query_one("#target-url", Input).value.strip()
         if not url:
+            self.notify("Please enter a target URL", severity="warning")
             return
-        
+
+        self.initial_url = url
         self.query_one("#rep-url", Input).value = url
         self.notify(f"Analyzing {url}...", timeout=2)
-        resp = await self.repeater_engine.send_request("GET", url, {"User-Agent": "CTF-DevTools/1.0"})
-
-        # Check for connection failure (e.g. expired challenge port)
-        if resp.status_code == 0:
-            self.query_one("#rep-meta", Label).update(f"[!] Connection Refused / Server Offline")
-            self.query_one("#rep-resp-body", TextArea).text = (
-                f"[!] FAILED TO CONNECT TO: {url}\n\n"
-                f"Error: {resp.body}\n\n"
-                "Possible causes:\n"
-                "1. If this is a CTF challenge instance (e.g. picoCTF), the container port may have timed out.\n"
-                "2. Check your network connection or verify the target port.\n"
-                "3. You can paste the active URL into the top bar, and DevTools will auto-analyze immediately!"
-            )
-            self.notify(f"Connection failed to {url}! Check if challenge container is running.", severity="error", timeout=6)
+        try:
+            dom = DOMAnalyzer(url, self.flag_tracker, self.cookie_storage)
+            resp = await dom.fetch_and_parse()
+        except Exception as e:
+            self.notify(f"Failed to connect to target: {e}", severity="error")
             return
 
         self.current_html = resp.body
-        self.action_refresh_dom_tree()
-        self.flag_tracker.scan(resp.body)
-        for h, v in resp.headers.items():
-            self.flag_tracker.scan(f"{h}: {v}")
         self.update_flag_display()
 
-        self.query_one("#rep-meta", Label).update(
-            f"Status: {resp.status_code} | Latency: {resp.elapsed_ms}ms | Size: {resp.content_length} bytes"
-        )
-        self.query_one("#rep-resp-headers", TextArea).text = json.dumps(resp.headers, indent=2)
-        self.query_one("#rep-resp-body", TextArea).text = resp.body[:10000]
+        # Update DOM Elements Tree
+        tree = self.query_one("#tree-dom", Tree)
+        build_dom_tree(tree, resp.body, hidden_only=self.dom_hidden_only)
 
-        if resp.flags:
-            self.query_one("#rep-flag-alert", Label).update(f"\uf024 FLAG FOUND: {', '.join(resp.flags)}")
-        else:
-            self.query_one("#rep-flag-alert", Label).update("")
+        # 1. Update Comments & Hidden Forms
+        comm_lines = [f"• {c}" for c in dom.comments]
+        self.query_one("#txt-comments", TextArea).text = "\n".join(comm_lines) if comm_lines else "No HTML comments found."
 
-        # 1. Immediate DOM & Forms extraction (0ms latency)
-        dom = DOMAnalyzer(resp.body, base_url=url)
-
-        forms = dom.extract_forms()
         form_lines = []
-        for idx, f in enumerate(forms, 1):
-            form_lines.append(f"Form #{idx}: [{f['method']}] Action: {f['action']}")
+        for f in dom.forms:
+            form_lines.append(f"Form: {f['method']} {f['action']}")
             for inp in f["inputs"]:
                 attrs = []
                 if inp["hidden"]:
@@ -1240,7 +1252,7 @@ class CTFDevToolsApp(App):
         # 5. Asynchronously gather external comments in background without blocking
         asyncio.create_task(self._gather_comments_background(url, resp.body))
 
-        # 5. Start recon scanner asynchronously in background
+        # 6. Start recon scanner asynchronously in background
         asyncio.create_task(self.action_run_scanner())
 
     async def _gather_comments_background(self, url: str, html_body: str):
@@ -1255,113 +1267,129 @@ class CTFDevToolsApp(App):
         url = self.query_one("#target-url", Input).value.strip()
         if not url:
             return
-        scanner = CTFScanner(url, self.flag_tracker, cookie_storage=self.cookie_storage)
+        self.notify("Running CTF Recon Scanner in background...", timeout=2)
+        scanner = CTFScanner(url, self.flag_tracker)
+        results = await scanner.scan_all()
+        self.probe_results = results
+        
         tbl = self.query_one("#tbl-recon", DataTable)
         tbl.clear()
-        self.probe_results = []
+        for r in results:
+            flags = ", ".join(r.flags) if r.flags else "-"
+            snippet = r.body_snippet.replace("\n", " ")[:30] if r.body_snippet else ""
+            tbl.add_row(str(r.status_code), r.path, f"{r.content_length}b", flags, snippet)
+        
+        # Display tech stack
+        tech_lines = [f"{k}: {v}" for k, v in scanner.tech_stack.items()]
+        self.query_one("#txt-tech-stack", TextArea).text = "\n".join(tech_lines) if tech_lines else "No sensitive disclosure headers."
+        self.update_flag_display()
 
-        def on_progress(idx, total, res):
-            flags_str = ", ".join(res.flags) if res.flags else "-"
-            tbl.add_row(
-                str(res.status_code),
-                res.path,
-                f"{res.content_length} B",
-                flags_str,
-                res.snippet[:40]
-            )
-            self.probe_results.append(res)
-            self.update_flag_display()
-            if len(self.probe_results) == 1:
-                self.display_selected_probe(0)
-
-        results = await scanner.scan_all(on_progress=on_progress)
-        self.probe_results = results
-        tech_lines = [f"{k.upper()}: {v}" for k, v in scanner.tech_stack.items()]
-        self.query_one("#txt-tech-stack", TextArea).text = "\n".join(tech_lines) if tech_lines else "No disclosure headers."
-        if self.probe_results and not self.current_probe_url:
+        # Automatically inspect the first discovered sensitive file
+        if results:
             self.display_selected_probe(0)
 
-    def display_selected_probe(self, row_idx: int = -1):
-        tbl = self.query_one("#tbl-recon", DataTable)
-        if row_idx < 0:
-            row_idx = tbl.cursor_row
+    # ---------------------------------------------------------
+    # DOM Tree Actions
+    # ---------------------------------------------------------
+    def display_selected_dom_node(self, node: TreeNode):
+        if not node or not hasattr(node, "data") or node.data is None:
+            return
+        tag = node.data
+        self.selected_dom_tag = tag
+        attr_text = format_tag_details(tag)
+        self.query_one("#txt-node-attrs", TextArea).text = attr_text
+        outer_html = str(tag)[:10000]
+        self.query_one("#txt-node-html", TextArea).text = outer_html
+
+    def action_search_dom_tree(self):
+        query = self.query_one("#inp-dom-search", Input).value.strip()
+        tree = self.query_one("#tree-dom", Tree)
+        build_dom_tree(tree, self.current_html, filter_query=query, hidden_only=self.dom_hidden_only)
+        self.notify(f"Filtered DOM tree: '{query}'" if query else "Reset DOM tree filter")
+
+    def action_toggle_hidden_dom(self):
+        self.dom_hidden_only = not self.dom_hidden_only
+        btn = self.query_one("#btn-dom-hidden", Button)
+        btn.label = "[ Hidden: ON ]" if self.dom_hidden_only else "[ Hidden Only ]"
+        query = self.query_one("#inp-dom-search", Input).value.strip()
+        tree = self.query_one("#tree-dom", Tree)
+        build_dom_tree(tree, self.current_html, filter_query=query, hidden_only=self.dom_hidden_only)
+        self.notify(f"Showing {'only hidden elements' if self.dom_hidden_only else 'all elements'}")
+
+    def action_refresh_dom_tree(self):
+        query = self.query_one("#inp-dom-search", Input).value.strip()
+        tree = self.query_one("#tree-dom", Tree)
+        build_dom_tree(tree, self.current_html, filter_query=query, hidden_only=self.dom_hidden_only)
+        self.notify("Re-parsed HTML DOM tree!")
+
+    def action_copy_dom_outer_html(self):
+        if not self.selected_dom_tag:
+            self.notify("Select an element in the DOM tree first", severity="warning")
+            return
+        outer = str(self.selected_dom_tag)
+        self._copy_to_system_clipboard(outer)
+        self.notify(f"Copied <{self.selected_dom_tag.name}> outer HTML to clipboard!")
+
+    # ---------------------------------------------------------
+    # Sources, Probes, Downloads
+    # ---------------------------------------------------------
+    def display_selected_probe(self, row_idx: int):
         if not (0 <= row_idx < len(self.probe_results)):
             return
-        res = self.probe_results[row_idx]
-        self.current_probe_url = res.url
-        self.current_probe_content = res.body or res.snippet
-        
+        probe = self.probe_results[row_idx]
+        self.current_probe_url = probe.url
         lbl = self.query_one("#lbl-probe-file", Label)
-        flag_indicator = f" [ FLAG FOUND]" if res.flags else ""
-        lbl.update(f"Selected: {res.path} [{res.status_code}] ({res.content_length} B){flag_indicator}")
-        
+        lbl.update(f"Selected File: {probe.path} ({probe.status_code}, {probe.content_length} bytes)")
         viewer = self.query_one("#txt-probe-content", TextArea)
-        flags_banner = f"🚩 FLAGS DETECTED: {', '.join(res.flags)}\n\n" if res.flags else ""
-        body_to_show = res.body if res.body else f"[Preview Snippet]:\n{res.snippet}\n\n(Click 'Fetch Full' to retrieve entire content)"
-        viewer.text = f"{flags_banner}{body_to_show}"
+        if probe.body_snippet:
+            viewer.text = f"=== SENSITIVE FILE PROBE: {probe.url} ===\n\n{probe.body_snippet}"
+        else:
+            viewer.text = f"=== SENSITIVE FILE PROBE: {probe.url} ===\n\n(No body returned - Status {probe.status_code})"
 
     async def action_fetch_selected_probe(self):
         if not self.current_probe_url:
-            self.notify("Select a probe row first", severity="warning")
+            self.notify("Select a probe file in the table first", severity="warning")
             return
-        self.notify(f"Fetching {self.current_probe_url}...", timeout=2)
-        resp = await self.repeater_engine.send_request("GET", self.current_probe_url, {"User-Agent": "CTF-DevTools/1.0"})
-        self.current_probe_content = resp.body
-        flags_banner = f"🚩 FLAGS DETECTED: {', '.join(resp.flags)}\n\n" if resp.flags else ""
-        self.query_one("#txt-probe-content", TextArea).text = f"{flags_banner}{resp.body}"
-        self.notify(f"Fetched {resp.content_length} bytes ({resp.status_code})")
+        viewer = self.query_one("#txt-probe-content", TextArea)
+        viewer.text = f"Fetching full content from: {self.current_probe_url}..."
+        async with httpx.AsyncClient(verify=False, timeout=8.0) as client:
+            try:
+                r = await client.get(self.current_probe_url)
+                flags = self.flag_tracker.scan(r.text)
+                self.update_flag_display()
+                flag_str = f"\n[Captured Flags: {', '.join(flags)}]" if flags else ""
+                viewer.text = f"=== FULL CONTENT: {self.current_probe_url} (HTTP {r.status_code}) ==={flag_str}\n\n{r.text}"
+                self.notify(f"Fetched {len(r.content)} bytes from {self.current_probe_url}")
+            except Exception as e:
+                viewer.text = f"[!] Failed to fetch full probe content: {e}"
 
     def action_send_probe_to_repeater(self):
         if not self.current_probe_url:
-            self.notify("Select a probe row first", severity="warning")
+            self.notify("Select a probe file in the table first", severity="warning")
             return
         self.query_one("#rep-url", Input).value = self.current_probe_url
         self.query_one("#rep-method", Input).value = "GET"
-        self.query_one(TabbedContent).active = "tab-repeater"
-        self.notify(f"Sent {self.current_probe_url} to Repeater!")
+        self.action_jump_workspace("tab-repeater")
+        self.notify("Sent probe URL to Repeater!")
 
     def action_copy_probe_curl(self):
         if not self.current_probe_url:
-            self.notify("Select a probe row first", severity="warning")
             return
-        cmd = f"curl -s -i {self.current_probe_url}"
-        try:
-            import shutil, subprocess
-            if shutil.which("xclip"):
-                subprocess.run(["xclip", "-selection", "clipboard"], input=cmd.encode(), check=False)
-            elif shutil.which("wl-copy"):
-                subprocess.run(["wl-copy"], input=cmd.encode(), check=False)
-        except Exception:
-            pass
-        self.notify(f"Copied cURL: {cmd}")
+        cmd = f'curl -i -k "{self.current_probe_url}"'
+        self._copy_to_system_clipboard(cmd)
+        self.notify("Copied cURL command for probe to clipboard!")
 
     def action_scan_probe_secrets(self):
-        content = self.current_probe_content
-        if not content:
-            self.notify("Select or fetch a probe first", severity="warning")
-            return
-        patterns = [
-            ("Flag Pattern", r"(?:flag|ctf)\{[^\s\"'<>]+\}"),
-            ("Partial Flag", r"picoCTF\{[^\s\"'<>]+"),
-            ("API Key / Token", r"(?:api[_-]?key|secret|token|password|auth)[\"']?\s*[:=]\s*[\"']([a-zA-Z0-9_\-\.]{8,})[\"']"),
-            ("Endpoint / Route", r"[\"'](/(?:api|v[0-9]|auth|admin|debug|users)[a-zA-Z0-9_\-\.\/]+)[\"']"),
-            ("Disallowed Route", r"Disallow:\s*([^\s]+)"),
-        ]
-        hits = []
-        for name, pat in patterns:
-            matches = re.findall(pat, content, re.I)
-            for m in matches:
-                val = m if isinstance(m, str) else m[0]
-                hits.append(f"• [{name}]: {val}")
         viewer = self.query_one("#txt-probe-content", TextArea)
-        hits_text = "\n".join(hits) if hits else "No obvious hardcoded secrets or routes detected."
-        viewer.text = (
-            f"=== SCAN RESULTS FOR {self.current_probe_url} ===\n\n"
-            + hits_text
-            + "\n\n=== FULL RAW CONTENT BELOW ===\n\n"
-            + content
-        )
-        self.notify(f"Found {len(hits)} interesting pattern(s)")
+        content = viewer.text
+        if not content:
+            return
+        flags = self.flag_tracker.scan(content)
+        if flags:
+            self.update_flag_display()
+            self.notify(f"Captured Flag: {', '.join(flags)}", severity="warning", timeout=5)
+        else:
+            self.notify("No new flags detected in probe content")
 
     async def action_run_spider(self):
         url = self.query_one("#target-url", Input).value.strip()
@@ -1389,17 +1417,9 @@ class CTFDevToolsApp(App):
         else:
             self.notify("No assets discovered yet. Click Analyze first.", severity="warning")
 
-    # Download directory — all downloads are restricted here
-    DOWNLOAD_DIR = "/home/devchan/CTF/sandbox/ctf-dev-downloads"
-
     async def action_download_selected_asset(self):
-        """Download the selected asset to DOWNLOAD_DIR as binary, preserving original bytes."""
-        import os, urllib.parse, re as _re, pathlib
-
         tbl = self.query_one("#tbl-assets", DataTable)
         row_idx = tbl.cursor_row
-
-        # Resolve URL from selected row or current asset
         url = None
         if 0 <= row_idx < len(self.discovered_assets):
             url = self.discovered_assets[row_idx]["url"]
@@ -1410,17 +1430,14 @@ class CTFDevToolsApp(App):
             self.notify("Select a file in the table first.", severity="warning")
             return
 
-        # Derive a safe filename from the URL
         parsed_path = urllib.parse.urlparse(url).path
         raw_name = parsed_path.rstrip("/").split("/")[-1].split("?")[0] or "download"
-        # Sanitize: keep alphanumeric, dots, dashes, underscores only
-        safe_name = _re.sub(r"[^\w.\-]", "_", raw_name)[:120] or "download"
+        safe_name = re.sub(r"[^\w.\-]", "_", raw_name)[:120] or "download"
 
-        dest_dir = pathlib.Path(self.DOWNLOAD_DIR)
+        dest_dir = self.downloads_dir
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_path = dest_dir / safe_name
 
-        # Avoid overwriting: append counter if file already exists
         counter = 1
         stem = dest_path.stem
         suffix = dest_path.suffix
@@ -1429,40 +1446,32 @@ class CTFDevToolsApp(App):
             counter += 1
 
         lbl = self.query_one("#lbl-asset-info", Label)
-        lbl.update(f" Downloading: {safe_name}...")
+        lbl.update(f"Downloading: {safe_name}...")
 
-        async with httpx.AsyncClient(verify=False, timeout=15.0,
-                                     follow_redirects=True) as client:
+        async with httpx.AsyncClient(verify=False, timeout=15.0, follow_redirects=True) as client:
             try:
                 r = await client.get(url)
                 dest_path.write_bytes(r.content)
                 size_kb = len(r.content) / 1024
-                content_type = r.headers.get("content-type", "unknown")
-                lbl.update(
-                    f" ⬇ Saved: {safe_name} ({size_kb:.1f} KB) → {self.DOWNLOAD_DIR}"
-                )
-                self.notify(
-                    f"⬇ Downloaded: {safe_name}  ({size_kb:.1f} KB)",
-                    timeout=5,
-                )
-                # Also scan text content for flags
+                lbl.update(f"Saved: {safe_name} ({size_kb:.1f} KB) -> {self.downloads_dir}")
+                self.notify(f"Downloaded: {safe_name} ({size_kb:.1f} KB)", timeout=5)
                 try:
                     text = r.content.decode("utf-8", errors="ignore")
                     flags = self.flag_tracker.scan(text)
                     if flags:
-                        self.notify(f"🚩 FLAG in download: {', '.join(flags)}", severity="warning", timeout=8)
+                        self.notify(f"FLAG in download: {', '.join(flags)}", severity="warning", timeout=8)
                     self.update_flag_display()
                 except Exception:
                     pass
             except Exception as e:
                 self.notify(f"Download failed: {e}", severity="error")
-                lbl.update(f" Download failed: {e}")
+                lbl.update(f"Download failed: {e}")
 
     async def fetch_asset(self, url: str):
         self.current_asset_url = url
         lbl = self.query_one("#lbl-asset-info", Label)
         filename = url.split('/')[-1].split('?')[0] or url
-        lbl.update(f" Fetching: {filename}...")
+        lbl.update(f"Fetching: {filename}...")
         viewer = self.query_one("#txt-asset-content", TextArea)
         viewer.text = f"Fetching asset from: {url}..."
         async with httpx.AsyncClient(verify=False, timeout=8.0) as client:
@@ -1473,8 +1482,8 @@ class CTFDevToolsApp(App):
                 self.update_storage_display()
                 flags = self.flag_tracker.scan(r.text)
                 self.update_flag_display()
-                flag_note = f" [ FLAG: {', '.join(flags)}]" if flags else ""
-                lbl.update(f" {filename} ({len(r.content)} bytes){flag_note}")
+                flag_note = f" [FLAG: {', '.join(flags)}]" if flags else ""
+                lbl.update(f"{filename} ({len(r.content)} bytes){flag_note}")
                 viewer.text = r.text[:50000]
             except Exception as e:
                 viewer.text = f"[!] Failed to fetch asset: {e}"
@@ -1524,35 +1533,150 @@ class CTFDevToolsApp(App):
                     try:
                         data = r.json()
                         sources = data.get("sources", [])
-                        sources_text = "\n• ".join(sources)
                         viewer.text = (
-                            f"[+] SOURCE MAP FOUND! ({r.status_code} OK - {len(r.content)} bytes)\n\n"
-                            f"Original Source Files ({len(sources)} files):\n• {sources_text}\n\n"
-                            f"Raw Source Map Preview:\n{r.text[:20000]}"
+                            f"=== SOURCE MAP FOUND: {map_url} ===\n\n"
+                            f"Original Unminified Source Files ({len(sources)}):\n"
+                            + "\n".join([f"  • {s}" for s in sources])
+                            + "\n\nFull Map JSON:\n" + r.text[:20000]
                         )
+                        self.notify("Source map found & unminified!", severity="warning", timeout=5)
                     except Exception:
-                        viewer.text = f"[+] Source map returned ({len(r.content)} bytes):\n\n{r.text[:20000]}"
+                        viewer.text = f"=== SOURCE MAP FOUND ({r.status_code}) ===\n\n{r.text[:20000]}"
                 else:
-                    viewer.text = f"[-] Source map not found ({map_url} returned {r.status_code})."
+                    viewer.text = f"[!] Source map not found at: {map_url} (HTTP {r.status_code})"
             except Exception as e:
-                viewer.text = f"[!] Source map probe error: {e}"
+                viewer.text = f"[!] Error probing source map: {e}"
 
     def action_copy_asset_curl(self):
-        if self.current_asset_url:
-            curl_cmd = f"curl -i '{self.current_asset_url}'"
-            self.query_one("#txt-asset-content", TextArea).text = f"[cURL Command]:\n{curl_cmd}"
+        if not self.current_asset_url:
+            return
+        cmd = f'curl -i -k "{self.current_asset_url}"'
+        self._copy_to_system_clipboard(cmd)
+        self.notify("Copied cURL command to clipboard!")
 
     def action_send_asset_to_repeater(self):
-        if self.current_asset_url:
-            self.query_one("#rep-url", Input).value = self.current_asset_url
-            self.query_one("#rep-method", Input).value = "GET"
-            self.notify(f"Sent {self.current_asset_url} to Repeater")
+        if not self.current_asset_url:
+            return
+        self.query_one("#rep-url", Input).value = self.current_asset_url
+        self.query_one("#rep-method", Input).value = "GET"
+        self.action_jump_workspace("tab-repeater")
+        self.notify("Sent asset URL to Repeater!")
 
+    # ---------------------------------------------------------
+    # Comments & Secrets
+    # ---------------------------------------------------------
+    async def action_refresh_comments(self):
+        url = self.query_one("#target-url", Input).value.strip()
+        if not url:
+            return
+        self.notify("Harvesting comments across all pages and scripts...", timeout=2)
+        if self.comments_gatherer:
+            await self.comments_gatherer.gather_all(self.current_html)
+            self.raw_comments_report = self.comments_gatherer.format_report()
+            self.query_one("#txt-comments", TextArea).text = self.raw_comments_report
+            self.update_flag_display()
+            self.notify("Comments harvested!")
+
+    def action_scan_comments_secrets(self):
+        if not self.comments_gatherer:
+            return
+        secrets = self.comments_gatherer.scan_secrets()
+        if secrets:
+            lines = [f"• [{s['category']}] ({s['source']}): {s['match']}" for s in secrets]
+            self.query_one("#txt-comments", TextArea).text = "=== HIGH-CONFIDENCE SECRETS & LEAKS ===\n\n" + "\n".join(lines)
+            self.notify(f"Found {len(secrets)} potential secrets in comments!", severity="warning", timeout=5)
+        else:
+            self.notify("No obvious API keys or credentials detected in comments")
+
+    # ---------------------------------------------------------
+    # Cookie & Storage Management
+    # ---------------------------------------------------------
+    def update_cookies_display(self):
+        tbl = self.query_one("#tbl-cookies", DataTable)
+        tbl.clear()
+        for name, val in self.cookie_storage.cookies.items():
+            tbl.add_row(name, val[:30] + ("..." if len(val) > 30 else ""), "/", "False")
+
+    def update_storage_display(self):
+        tbl = self.query_one("#tbl-storage", DataTable)
+        tbl.clear()
+        for item in self.cookie_storage.local_storage:
+            tbl.add_row("localStorage", item["key"], item["value"][:25], item.get("source", "HTML"))
+        for item in self.cookie_storage.session_storage:
+            tbl.add_row("sessionStorage", item["key"], item["value"][:25], item.get("source", "HTML"))
+
+    def action_set_cookie(self):
+        name = self.query_one("#inp-cookie-name", Input).value.strip()
+        val = self.query_one("#inp-cookie-val", Input).value.strip()
+        if name:
+            self.cookie_storage.set_cookie(name, val)
+            self.update_cookies_display()
+            self.notify(f"Set cookie: {name}")
+
+    def action_delete_cookie(self):
+        name = self.query_one("#inp-cookie-name", Input).value.strip()
+        if name in self.cookie_storage.cookies:
+            self.cookie_storage.del_cookie(name)
+            self.update_cookies_display()
+            self.notify(f"Deleted cookie: {name}")
+
+    def action_decode_selected_cookie(self):
+        tbl = self.query_one("#tbl-cookies", DataTable)
+        row_idx = tbl.cursor_row
+        names = list(self.cookie_storage.cookies.keys())
+        if 0 <= row_idx < len(names):
+            name = names[row_idx]
+            val = self.cookie_storage.cookies[name]
+        else:
+            val = self.query_one("#inp-cookie-val", Input).value.strip()
+
+        if not val:
+            self.notify("Select a cookie or type a value to decode", severity="warning")
+            return
+
+        dec_text = f"=== COOKIE VALUE: {val} ===\n\n"
+        b64 = base64_decode(val)
+        if b64:
+            dec_text += f"[+] Base64 Decoded:\n{b64}\n\n"
+        jwt_res = inspect_jwt(val)
+        if "error" not in jwt_res:
+            dec_text += f"[+] JWT Header:\n{json.dumps(jwt_res.get('header'), indent=2)}\n\n"
+            dec_text += f"[+] JWT Payload:\n{json.dumps(jwt_res.get('payload'), indent=2)}\n\n"
+            if jwt_res.get("analysis"):
+                dec_text += f"[!] JWT Alerts:\n" + "\n".join([f"  • {a}" for a in jwt_res["analysis"]]) + "\n\n"
+        flask_res = unpack_flask_session(val)
+        if "error" not in flask_res:
+            dec_text += f"[+] Flask Session Payload:\n{json.dumps(flask_res, indent=2)}\n\n"
+        u_dec = url_decode(val)
+        if u_dec != val:
+            dec_text += f"[+] URL Decoded:\n{u_dec}\n\n"
+
+        self.query_one("#txt-cookie-decoded", TextArea).text = dec_text
+
+    def action_set_global_header(self):
+        name = self.query_one("#inp-hdr-name", Input).value.strip()
+        val = self.query_one("#inp-hdr-val", Input).value.strip()
+        if name and val:
+            self.cookie_storage.set_header(name, val)
+            hdrs = "\n".join([f"{k}: {v}" for k, v in self.cookie_storage.global_headers.items()])
+            self.query_one("#txt-global-headers", TextArea).text = hdrs
+            self.notify(f"Set global header: {name}")
+
+    def action_clear_global_headers(self):
+        self.cookie_storage.global_headers.clear()
+        self.query_one("#txt-global-headers", TextArea).text = ""
+        self.notify("Cleared global headers")
+
+    # ---------------------------------------------------------
+    # Repeater Actions
+    # ---------------------------------------------------------
     async def action_send_repeater(self):
-        method = self.query_one("#rep-method", Input).value.strip()
+        method = self.query_one("#rep-method", Input).value.strip().upper()
         url = self.query_one("#rep-url", Input).value.strip()
         headers_raw = self.query_one("#rep-headers", TextArea).text
         body = self.query_one("#rep-body", TextArea).text
+        if not url:
+            return
 
         headers = {}
         for line in headers_raw.splitlines():
@@ -1560,602 +1684,76 @@ class CTFDevToolsApp(App):
                 k, v = line.split(":", 1)
                 headers[k.strip()] = v.strip()
 
-        resp = await self.repeater_engine.send_request(method, url, headers, body)
-        self.query_one("#rep-meta", Label).update(
-            f"Status: {resp.status_code} | Latency: {resp.elapsed_ms}ms | Size: {resp.content_length} bytes"
-        )
-        self.query_one("#rep-resp-headers", TextArea).text = json.dumps(resp.headers, indent=2)
-        self.query_one("#rep-resp-body", TextArea).text = resp.body[:15000]
-
-        if resp.flags:
-            self.query_one("#rep-flag-alert", Label).update(f"\uf024 FLAG FOUND: {', '.join(resp.flags)}")
-        else:
-            self.query_one("#rep-flag-alert", Label).update("")
-
-        self.update_flag_display()
+        self.notify("Sending request...", timeout=1)
+        resp = await self.repeater_engine.send(method, url, headers, body)
         self.refresh_network_table()
+
+        self.query_one("#lbl-rep-status", Label).update(
+            f"Status: {resp.status_code} | Time: {resp.elapsed_ms:.1f}ms | Length: {len(resp.body)} bytes"
+        )
+
+        flags_found = self.flag_tracker.scan(resp.body)
+        self.update_flag_display()
+        flag_header = f"CAPTURED FLAGS: {', '.join(flags_found)}\n\n" if flags_found else ""
+
+        hdr_lines = [f"{k}: {v}" for k, v in resp.headers.items()]
+        full_text = f"HTTP/1.1 {resp.status_code}\n" + "\n".join(hdr_lines) + f"\n\n{flag_header}" + resp.body
+        self.query_one("#rep-response", TextArea).text = full_text
 
     def action_copy_curl(self):
         method = self.query_one("#rep-method", Input).value.strip()
         url = self.query_one("#rep-url", Input).value.strip()
         headers_raw = self.query_one("#rep-headers", TextArea).text
         body = self.query_one("#rep-body", TextArea).text
-        headers = dict(line.split(":", 1) for line in headers_raw.splitlines() if ":" in line)
-        curl_cmd = self.repeater_engine.to_curl(method, url, {k.strip(): v.strip() for k, v in headers.items()}, body)
-        self.query_one("#rep-resp-body", TextArea).text = f"[cURL Command]:\n{curl_cmd}"
+        headers = {}
+        for line in headers_raw.splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                headers[k.strip()] = v.strip()
+
+        cmd = self.repeater_engine.to_curl(method, url, headers, body)
+        self._copy_to_system_clipboard(cmd)
+        self.notify("Copied cURL command to clipboard!")
 
     def action_copy_python(self):
         method = self.query_one("#rep-method", Input).value.strip()
         url = self.query_one("#rep-url", Input).value.strip()
         headers_raw = self.query_one("#rep-headers", TextArea).text
         body = self.query_one("#rep-body", TextArea).text
-        headers = dict(line.split(":", 1) for line in headers_raw.splitlines() if ":" in line)
-        py_code = self.repeater_engine.to_python_requests(method, url, {k.strip(): v.strip() for k, v in headers.items()}, body)
-        self.query_one("#rep-resp-body", TextArea).text = f"[Python requests script]:\n\n{py_code}"
+        headers = {}
+        for line in headers_raw.splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                headers[k.strip()] = v.strip()
+
+        script = self.repeater_engine.to_python(method, url, headers, body)
+        self.query_one("#rep-response", TextArea).text = "=== GENERATED PYTHON EXPLOIT SCRIPT ===\n\n" + script
+        self.notify("Generated Python exploit script in Response pane!")
 
     async def action_run_fuzzer(self):
         method = self.query_one("#rep-method", Input).value.strip()
         url = self.query_one("#rep-url", Input).value.strip()
         headers_raw = self.query_one("#rep-headers", TextArea).text
         body = self.query_one("#rep-body", TextArea).text
-        headers = dict(line.split(":", 1) for line in headers_raw.splitlines() if ":" in line)
+        headers = {}
+        for line in headers_raw.splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                headers[k.strip()] = v.strip()
 
-        has_fuzz = (
-            has_fuzz_marker(url) or
-            has_fuzz_marker(body) or
-            has_fuzz_marker(headers_raw) or
-            any(has_fuzz_marker(k) or has_fuzz_marker(v) for k, v in headers.items())
-        )
-        if not has_fuzz:
-            self.notify("Add FUZZ or fzz in URL, Header, or Body (e.g. Cookie: name=FUZZ)", severity="warning", timeout=6)
-            return
+        self.notify("Running Repeater Fuzzer with 100+ CTF payloads...", timeout=2)
+        results = await self.repeater_engine.fuzz(method, url, headers, body)
+        self.refresh_network_table()
 
-        raw_range = self.query_one("#rep-fuzz-range", Input).value.strip()
-        payloads = []
-        if ".." in raw_range:
-            parts = raw_range.split("..", 1)
-            try:
-                start_n = int(parts[0].strip())
-                end_n = int(parts[1].strip())
-                payloads = [str(i) for i in range(start_n, end_n + 1)]
-            except ValueError:
-                pass
-        elif "," in raw_range:
-            payloads = [p.strip() for p in raw_range.split(",") if p.strip()]
-        elif raw_range:
-            payloads = [p.strip() for p in raw_range.split() if p.strip()]
-
-        if not payloads:
-            payloads = [str(i) for i in range(0, 31)]
-
-        self.notify(f"Fuzzing {len(payloads)} payloads across FUZZ markers...", timeout=3)
-        self.query_one("#rep-resp-body", TextArea).text = f"Running fuzzer across {len(payloads)} payloads...\n\nPayloads: {', '.join(payloads[:10])}..."
-
-        fuzz_results = await self.repeater_engine.run_fuzzer(
-            method, url, {k.strip(): v.strip() for k, v in headers.items()}, body, payloads
-        )
-
-        found_flags = []
-        lines = [f"{'PAYLOAD':<14} {'STATUS':<8} {'BYTES':<10} {'MS':<10} {'FLAGS'}"]
-        lines.append("-" * 65)
-        for r in fuzz_results:
-            flags_str = ", ".join(r.flags) if r.flags else ""
-            if r.flags:
-                found_flags.extend(r.flags)
-            lines.append(f"{r.payload:<14} {r.status_code:<8} {str(r.length) + ' B':<10} {str(r.elapsed_ms) + 'ms':<10} {flags_str}")
-
-        self.query_one("#rep-resp-body", TextArea).text = "\n".join(lines)
-        if found_flags:
-            self.query_one("#rep-flag-alert", Label).update(f" FLAG FOUND: {', '.join(found_flags)}")
-            self.notify(f"Fuzzer discovered {len(found_flags)} flag(s)!", severity="information", timeout=6)
-        else:
-            self.query_one("#rep-flag-alert", Label).update("")
+        lines = ["=== FUZZ RESULTS (Sorted by Anomalies) ==="]
+        for r in results[:40]:
+            flag_str = f" [FLAG: {', '.join(r.flags)}]" if r.flags else ""
+            lines.append(f"Payload: {r.payload:<25} | Status: {r.status_code} | Size: {len(r.body)}b | Time: {r.elapsed_ms:.1f}ms{flag_str}")
+        self.query_one("#rep-response", TextArea).text = "\n".join(lines)
         self.update_flag_display()
 
-    # Decoder helpers
-    def handle_decode(self, func):
-        text = self.query_one("#dec-input", TextArea).text
-        try:
-            self.query_one("#dec-output", TextArea).text = func(text)
-        except Exception as e:
-            self.query_one("#dec-output", TextArea).text = f"[Error]: {e}"
-
-    def handle_jwt(self):
-        text = self.query_one("#dec-input", TextArea).text
-        res = inspect_jwt(text)
-        self.query_one("#dec-output", TextArea).text = json.dumps(res, indent=2)
-
-    def handle_flask(self):
-        text = self.query_one("#dec-input", TextArea).text
-        res = unpack_flask_session(text)
-        self.query_one("#dec-output", TextArea).text = json.dumps(res, indent=2)
-
-    def handle_hash(self):
-        text = self.query_one("#dec-input", TextArea).text
-        res = identify_hash(text)
-        self.query_one("#dec-output", TextArea).text = "Likely Hash Types:\n• " + "\n• ".join(res)
-
-    # WebSocket actions
-    async def action_ws_connect(self):
-        ws_url = self.query_one("#ws-url", Input).value.strip()
-        log_box = self.query_one("#txt-ws-log", TextArea)
-
-        def on_frame(f: WSFrame):
-            log_box.text += f"[{f.timestamp}] [{f.direction}] {f.payload}\n"
-            self.update_flag_display()
-
-        self.ws_mgr = WebSocketManager(self.flag_tracker, on_frame=on_frame)
-        try:
-            await self.ws_mgr.connect(ws_url)
-            log_box.text += f"[+] Connected to {ws_url}\n"
-        except Exception as e:
-            log_box.text += f"[!] Connection error: {e}\n"
-
-    async def action_ws_disconnect(self):
-        if self.ws_mgr:
-            await self.ws_mgr.disconnect()
-            self.query_one("#txt-ws-log", TextArea).text += "[-] Disconnected\n"
-
-    async def action_ws_send(self):
-        if self.ws_mgr and self.ws_mgr.is_connected:
-            payload = self.query_one("#ws-payload", Input).value
-            await self.ws_mgr.send(payload)
-
-    # OOB actions
-    async def action_oob_start(self):
-        port_str = self.query_one("#oob-port", Input).value.strip()
-        port = int(port_str) if port_str.isdigit() else 9999
-        tbl = self.query_one("#tbl-oob", DataTable)
-
-        def on_hit(req: OOBRequest):
-            tbl.add_row(req.timestamp, req.client_ip, req.method, req.path, req.body[:30])
-
-        self.oob_listener = OOBListener(port=port, on_hit=on_hit)
-        try:
-            await self.oob_listener.start()
-            self.notify(f"OOB Listener started on port {port}")
-        except Exception as e:
-            self.notify(f"Failed to start OOB Listener: {e}", severity="error")
-
-    async def action_oob_stop(self):
-        if self.oob_listener:
-            await self.oob_listener.stop()
-            self.notify("OOB Listener stopped")
-
-    def action_save_session(self):
-        session_name = self.query_one("#inp-session", Input).value.strip() or "challenge"
-        notes = self.query_one("#txt-notes", TextArea).text
-        all_flags = self.flag_tracker.get_all_flags()
-        data = {
-            "session_name": session_name,
-            "target_url": self.query_one("#target-url", Input).value,
-            "flags": all_flags,
-            "notes": notes,
-        }
-        sm = SessionManager(session_name)
-        saved_path = sm.save(data)
-        self.notify(f"Saved session to {saved_path}")
-
-    async def action_refresh_comments(self):
-        url = self.query_one("#target-url", Input).value.strip()
-        if not url:
-            return
-        viewer = self.query_one("#txt-comments", TextArea)
-        viewer.text = f"Gathering comments across HTML and linked assets from {url}..."
-        resp = await self.repeater_engine.send_request("GET", url, {"User-Agent": "CTF-DevTools/1.0"})
-        cg = CommentsGatherer(url, self.flag_tracker)
-        self.comments_gatherer = cg
-        await cg.gather_all(resp.body)
-        self.raw_comments_report = cg.format_report()
-        viewer.text = self.raw_comments_report
-        self.update_flag_display()
-        self.notify(f"Gathered {len(cg.comments)} comments!")
-
-    def action_filter_suspicious_comments(self):
-        if not self.comments_gatherer or not self.comments_gatherer.comments:
-            return
-        suspicious = [c for c in self.comments_gatherer.comments if c["suspicious"]]
-        viewer = self.query_one("#txt-comments", TextArea)
-        if not suspicious:
-            viewer.text = "No suspicious comments detected."
-            return
-        lines = [f"=== SUSPICIOUS COMMENTS ONLY ({len(suspicious)} items) ===\n"]
-        for c in suspicious:
-            lines.append(f"┌─ [{c['file_type']}] {c['origin']}")
-            lines.append(f"│  {c['comment']}")
-            lines.append("└" + "─" * 60 + "\n")
-        viewer.text = "\n".join(lines)
-
-    # Storage & Cookies Methods
-    def update_cookies_display(self):
-        tbl = self.query_one("#tbl-cookies", DataTable)
-        tbl.clear()
-        for name, c in self.cookie_storage.cookies.items():
-            tbl.add_row(c["name"], c["value"][:30], c["path"], str(c["httponly"]))
-        if self.cookie_storage.cookies:
-            self.action_decode_selected_cookie()
-
-    def update_storage_display(self):
-        tbl = self.query_one("#tbl-storage", DataTable)
-        tbl.clear()
-        for s in self.cookie_storage.harvested_storage:
-            source_name = s["source"].split("/")[-1] or s["source"]
-            tbl.add_row(s["api"], s["key"], s["value"][:30], source_name)
-
-    def action_set_cookie(self):
-        name = self.query_one("#inp-cookie-name", Input).value.strip()
-        val = self.query_one("#inp-cookie-val", Input).value.strip()
-        if not name:
-            self.notify("Cookie Name is required", severity="warning")
-            return
-        self.cookie_storage.set_cookie(name, val)
-        self.update_cookies_display()
-        self.notify(f"Added Cookie: {name}={val[:15]}")
-
-    def action_delete_cookie(self):
-        tbl = self.query_one("#tbl-cookies", DataTable)
-        row_idx = tbl.cursor_row
-        names = list(self.cookie_storage.cookies.keys())
-        if 0 <= row_idx < len(names):
-            name = names[row_idx]
-            self.cookie_storage.delete_cookie(name)
-            self.update_cookies_display()
-            self.notify(f"Deleted Cookie: {name}")
-
-    def action_decode_selected_cookie(self):
-        tbl = self.query_one("#tbl-cookies", DataTable)
-        row_idx = tbl.cursor_row
-        cookies_list = list(self.cookie_storage.cookies.values())
-        viewer = self.query_one("#txt-cookie-decoded", TextArea)
-        if 0 <= row_idx < len(cookies_list):
-            c = cookies_list[row_idx]
-            decoded = self.cookie_storage.decode_cookie_value(c["value"])
-            viewer.text = f"=== COOKIE: {c['name']} ===\n\n{decoded}"
-        elif cookies_list:
-            c = cookies_list[0]
-            decoded = self.cookie_storage.decode_cookie_value(c["value"])
-            viewer.text = f"=== COOKIE: {c['name']} ===\n\n{decoded}"
-        else:
-            viewer.text = "No cookies in jar to decode."
-
-    def action_set_global_header(self):
-        name = self.query_one("#inp-hdr-name", Input).value.strip()
-        val = self.query_one("#inp-hdr-val", Input).value.strip()
-        if not name or not val:
-            self.notify("Header name and value required", severity="warning")
-            return
-        self.cookie_storage.set_global_header(name, val)
-        self._refresh_headers_display()
-        self.notify(f"Injected Header: {name}")
-
-    def action_clear_global_headers(self):
-        self.cookie_storage.global_headers.clear()
-        self._refresh_headers_display()
-        self.notify("Cleared global headers")
-
-    def _refresh_headers_display(self):
-        viewer = self.query_one("#txt-global-headers", TextArea)
-        if not self.cookie_storage.global_headers:
-            viewer.text = "No active global headers."
-        else:
-            lines = [f"{k}: {v}" for k, v in self.cookie_storage.global_headers.items()]
-            viewer.text = "Active Global Request Headers (Auto-Injected):\n" + "\n".join(lines)
-
     # ---------------------------------------------------------
-    # JS Console & Deobfuscator Actions
-    # ---------------------------------------------------------
-    async def action_run_js(self):
-        code = self.query_one("#txt-js-input", TextArea).text.strip()
-        if not code:
-            self.notify("Enter JavaScript code to execute", severity="warning")
-            return
-
-        target_url = self.query_one("#target-url", Input).value.strip()
-        cookies_str = "; ".join([f"{k}={v}" for k, v in self.cookie_storage.cookies.items()])
-
-        out_area = self.query_one("#txt-js-output", TextArea)
-        self.notify("Executing JavaScript in sandbox...", timeout=1)
-
-        logs, return_val, is_err = await self.js_engine.eval_js(code, url=target_url, cookies=cookies_str)
-
-        text_to_scan = f"{logs}\n{return_val or ''}"
-        flags = self.flag_tracker.scan(text_to_scan)
-        if flags:
-            self.update_flag_display()
-
-        timestamp = "LIVE"
-        snippet = code.splitlines()[0][:50] if code.splitlines() else code[:50]
-        header = f"\n─── [JS Eval] : {snippet} ───\n"
-
-        parts = [header]
-        if flags:
-            parts.append(f"🚩 FLAG DETECTED: {', '.join(flags)}\n")
-        if logs:
-            parts.append(f"[Console Logs]:\n{logs}\n")
-        if return_val is not None:
-            prefix = "[Error]: " if is_err else "=> "
-            parts.append(f"{prefix}{return_val}\n")
-        elif not logs:
-            parts.append("=> undefined\n")
-
-        out_area.text = out_area.text + "".join(parts)
-
-    async def action_preload_target_scripts(self):
-        if not self.discovered_assets:
-            self.notify("No assets discovered yet. Click Analyze first.", severity="warning")
-            return
-
-        js_assets = [a for a in self.discovered_assets if a.get("type") == "SCRIPT" or a.get("url", "").endswith(".js")]
-        if not js_assets:
-            self.notify("No JavaScript files found on target.", severity="warning")
-            return
-
-        self.notify(f"Preloading {len(js_assets)} JavaScript file(s)...", timeout=2)
-        loaded = 0
-        async with httpx.AsyncClient(verify=False, timeout=8.0) as client:
-            for item in js_assets:
-                url = item["url"]
-                try:
-                    r = await client.get(url)
-                    if r.status_code == 200 and r.text:
-                        self.js_engine.add_preloaded_script(url, r.text)
-                        loaded += 1
-                except Exception:
-                    pass
-
-        lbl = self.query_one("#lbl-js-status", Label)
-        lbl.update(f"Runtime: Node.js (Preloaded {loaded} target scripts)")
-        out_area = self.query_one("#txt-js-output", TextArea)
-        out_area.text = (
-            out_area.text
-            + f"\n[✓] Successfully preloaded {loaded} target script(s) into sandbox environment!\n"
-            + f"    Target functions, variables, and arrays are now directly callable.\n"
-        )
-        self.notify(f"Preloaded {loaded} script(s) into JS Sandbox!")
-
-    def action_deobfuscate_js(self):
-        input_area = self.query_one("#txt-js-input", TextArea)
-        code = input_area.text
-        if not code.strip():
-            self.notify("Input area is empty", severity="warning")
-            return
-        deobf = deobfuscate_javascript(code)
-        input_area.text = deobf
-        self.notify("Deobfuscated hex, unicode, and packed JS!")
-
-    def action_clear_js_output(self):
-        self.query_one("#txt-js-output", TextArea).text = ""
-        self.notify("Console output cleared")
-
-    # ---------------------------------------------------------
-    # Network History & CSRF PoC Actions
-    # ---------------------------------------------------------
-    def refresh_network_table(self):
-        try:
-            tbl = self.query_one("#tbl-network", DataTable)
-            tbl.clear()
-            for entry in self.network_logger.entries:
-                tbl.add_row(
-                    str(entry.id),
-                    entry.timestamp,
-                    entry.method,
-                    str(entry.status_code),
-                    f"{entry.bytes_len} B",
-                    f"{entry.elapsed_ms} ms",
-                    entry.url
-                )
-        except Exception:
-            pass
-
-    def display_selected_network_entry(self, row_idx: int = -1):
-        tbl = self.query_one("#tbl-network", DataTable)
-        if row_idx < 0:
-            row_idx = tbl.cursor_row
-        if not (0 <= row_idx < len(self.network_logger.entries)):
-            return
-        entry = self.network_logger.entries[row_idx]
-        self.selected_network_entry = entry
-
-        lbl = self.query_one("#lbl-net-meta", Label)
-        lbl.update(f"{entry.method} {entry.url} [{entry.status_code}] ({entry.bytes_len} B, {entry.elapsed_ms} ms)")
-
-        req_headers_str = "\n".join([f"{k}: {v}" for k, v in entry.req_headers.items()])
-        req_text = f"=== REQUEST HEADERS ===\n{req_headers_str}\n\n=== REQUEST BODY ===\n{entry.req_body}" if entry.req_body else f"=== REQUEST HEADERS ===\n{req_headers_str}"
-        self.query_one("#txt-net-req", TextArea).text = req_text
-
-        resp_headers_str = "\n".join([f"{k}: {v}" for k, v in entry.resp_headers.items()])
-        resp_text = f"=== RESPONSE HEADERS ===\n{resp_headers_str}\n\n=== RESPONSE BODY ===\n{entry.resp_body}"
-        self.query_one("#txt-net-resp", TextArea).text = resp_text
-
-    def action_clear_network_history(self):
-        self.network_logger.clear()
-        self.query_one("#tbl-network", DataTable).clear()
-        self.query_one("#txt-net-req", TextArea).text = ""
-        self.query_one("#txt-net-resp", TextArea).text = ""
-        self.notify("Network history cleared")
-
-    def action_send_network_to_repeater(self):
-        if not self.selected_network_entry:
-            tbl = self.query_one("#tbl-network", DataTable)
-            if 0 <= tbl.cursor_row < len(self.network_logger.entries):
-                self.selected_network_entry = self.network_logger.entries[tbl.cursor_row]
-        if not self.selected_network_entry:
-            self.notify("Select a network row first", severity="warning")
-            return
-        entry = self.selected_network_entry
-        self.query_one("#rep-url", Input).value = entry.url
-        self.query_one("#rep-method", Input).value = entry.method
-        hdrs = "\n".join([f"{k}: {v}" for k, v in entry.req_headers.items()])
-        self.query_one("#rep-headers", TextArea).text = hdrs
-        self.query_one("#rep-body", TextArea).text = entry.req_body
-        self.query_one(TabbedContent).active = "tab-repeater"
-        self.notify(f"Sent {entry.method} {entry.url} to Repeater!")
-
-    def action_copy_network_curl(self):
-        if not self.selected_network_entry:
-            self.notify("Select a network request first", severity="warning")
-            return
-        e = self.selected_network_entry
-        cmd_parts = [f"curl -X {e.method} '{e.url}'"]
-        for k, v in e.req_headers.items():
-            cmd_parts.append(f"-H '{k}: {v}'")
-        if e.req_body:
-            cmd_parts.append(f"--data '{e.req_body}'")
-        cmd = " ".join(cmd_parts)
-        try:
-            import shutil, subprocess
-            if shutil.which("xclip"):
-                subprocess.run(["xclip", "-selection", "clipboard"], input=cmd.encode(), check=False)
-            elif shutil.which("wl-copy"):
-                subprocess.run(["wl-copy"], input=cmd.encode(), check=False)
-        except Exception:
-            pass
-        self.notify(f"Copied cURL command: {cmd[:60]}...")
-
-    def action_generate_network_csrf(self):
-        if not self.selected_network_entry:
-            self.notify("Select a network request first", severity="warning")
-            return
-        e = self.selected_network_entry
-        params = {}
-        if e.req_body:
-            for pair in e.req_body.split("&"):
-                if "=" in pair:
-                    k, v = pair.split("=", 1)
-                    params[urllib.parse.unquote_plus(k)] = urllib.parse.unquote_plus(v)
-        poc = generate_csrf_poc(e.method, e.url, params)
-        self.query_one("#txt-net-resp", TextArea).text = poc
-        self.notify("Generated CSRF PoC in Response Inspector!")
-
-    def action_generate_form_csrf(self):
-        forms_text = self.query_one("#txt-forms", TextArea).text
-        target_url = self.query_one("#target-url", Input).value.strip()
-        form_action = target_url
-        form_method = "POST"
-        fields = {}
-        for line in forms_text.splitlines():
-            if "Action:" in line:
-                act = line.split("Action:", 1)[1].split(",")[0].strip().strip("'\"")
-                if act:
-                    form_action = urllib.parse.urljoin(target_url, act)
-            elif "Method:" in line:
-                mth = line.split("Method:", 1)[1].strip().strip("'\"")
-                if mth:
-                    form_method = mth
-            elif "•" in line and "=" in line:
-                m = re.search(r"•\s*([a-zA-Z0-9_\-]+).*?=\s*'([^']*)'", line)
-                if m:
-                    fields[m.group(1)] = m.group(2) or "test_payload"
-        poc = generate_csrf_poc(form_method, form_action, fields)
-        self.query_one("#txt-forms", TextArea).text = (
-            "=== GENERATED CSRF EXPLOIT POC ===\n\n" + poc + "\n\n=== DISCOVERED FORMS ===\n\n" + forms_text
-        )
-        self.notify("Generated CSRF PoC in Forms pane!")
-
-    def action_generate_repeater_csrf(self):
-        url = self.query_one("#rep-url", Input).value.strip()
-        method = self.query_one("#rep-method", Input).value.strip()
-        body = self.query_one("#rep-body", TextArea).text.strip()
-        fields = {}
-        if body:
-            for pair in body.split("&"):
-                if "=" in pair:
-                    k, v = pair.split("=", 1)
-                    fields[urllib.parse.unquote_plus(k)] = urllib.parse.unquote_plus(v)
-        poc = generate_csrf_poc(method, url, fields)
-        self.query_one("#rep-resp-body", TextArea).text = poc
-        self.notify("Generated CSRF PoC in Response Body!")
-
-    # ---------------------------------------------------------
-    # Elements (HTML DOM Tree) Actions
-    # ---------------------------------------------------------
-    def action_refresh_dom_tree(self):
-        if not self.current_html:
-            return
-        try:
-            tree = self.query_one("#tree-dom", Tree)
-            query = self.query_one("#inp-dom-search", Input).value.strip()
-            build_dom_tree(
-                tree=tree,
-                html=self.current_html,
-                search_query=query,
-                hidden_only=self.dom_hidden_only,
-                flag_tracker=self.flag_tracker
-            )
-        except Exception:
-            pass
-
-    def action_search_dom_tree(self):
-        self.action_refresh_dom_tree()
-        query = self.query_one("#inp-dom-search", Input).value.strip()
-        if query:
-            self.notify(f"Filtered DOM tree by: '{query}'")
-        else:
-            self.notify("Showing full DOM tree")
-
-    def action_toggle_hidden_dom(self):
-        self.dom_hidden_only = not self.dom_hidden_only
-        btn = self.query_one("#btn-dom-hidden", Button)
-        if self.dom_hidden_only:
-            btn.label = "🔒 Hidden: ON"
-            btn.variant = "warning"
-            self.notify("Showing ONLY hidden DOM elements", severity="warning")
-        else:
-            btn.label = "🔒 Hidden Only"
-            btn.variant = "default"
-            self.notify("Showing full DOM tree")
-        self.action_refresh_dom_tree()
-
-    def display_selected_dom_node(self, node: TreeNode):
-        data = node.data
-        if data is None:
-            return
-        try:
-            attrs_viewer = self.query_one("#txt-node-attrs", TextArea)
-            html_viewer = self.query_one("#txt-node-html", TextArea)
-
-            if hasattr(data, "name"):  # Tag
-                self.selected_dom_tag = data
-                attrs_viewer.text = format_tag_details(data)
-                try:
-                    html_viewer.text = data.prettify()
-                except Exception:
-                    html_viewer.text = str(data)
-                
-                flags = self.flag_tracker.scan(str(data))
-                if flags:
-                    self.update_flag_display()
-            else:  # Text node
-                self.selected_dom_tag = None
-                text_val = str(data)
-                attrs_viewer.text = f"=== TEXT NODE ===\nLength: {len(text_val)} chars"
-                html_viewer.text = text_val
-                flags = self.flag_tracker.scan(text_val)
-                if flags:
-                    self.update_flag_display()
-        except Exception:
-            pass
-
-    def action_copy_dom_outer_html(self):
-        if not self.selected_dom_tag:
-            self.notify("Select an HTML element first", severity="warning")
-            return
-        try:
-            outer = self.selected_dom_tag.prettify()
-        except Exception:
-            outer = str(self.selected_dom_tag)
-        try:
-            import shutil, subprocess
-            if shutil.which("xclip"):
-                subprocess.run(["xclip", "-selection", "clipboard"], input=outer.encode(), check=False)
-            elif shutil.which("wl-copy"):
-                subprocess.run(["wl-copy"], input=outer.encode(), check=False)
-        except Exception:
-            pass
-        self.notify(f"Copied <{self.selected_dom_tag.name}> outer HTML to clipboard!")
-
-    # ---------------------------------------------------------
-    # cURL Workbench Actions
+    # cURL Studio Actions
     # ---------------------------------------------------------
     def load_selected_curl_template(self, row_idx: int):
         if not (0 <= row_idx < len(CURL_TEMPLATES)):
@@ -2178,7 +1776,6 @@ class CTFDevToolsApp(App):
         self.notify("Executing cURL command...", timeout=1)
         stdout, stderr, elapsed_ms, code = await execute_curl_command(cmd, timeout=15)
 
-        # Log to network history if it has URL
         parsed = parse_curl_to_repeater(cmd)
         if parsed["url"]:
             self.network_logger.log(
@@ -2194,20 +1791,17 @@ class CTFDevToolsApp(App):
             )
             self.refresh_network_table()
 
-        # Update meta label
         status_text = f"Exit Code: {code} | Latency: {elapsed_ms:.1f}ms | Output Size: {len(stdout)} bytes"
         self.query_one("#lbl-curl-meta", Label).update(status_text)
 
-        # Scan for flags in output
         flags = self.flag_tracker.scan(stdout + "\n" + stderr)
         if flags:
             self.update_flag_display()
-            self.notify(f"🚩 FLAG DETECTED IN CURL OUTPUT: {', '.join(flags)}", timeout=5)
+            self.notify(f"FLAG DETECTED IN CURL OUTPUT: {', '.join(flags)}", timeout=5)
 
-        # Format output
         output_parts = []
         if flags:
-            output_parts.append(f"🚩 CAPTURED FLAG(S): {', '.join(flags)}\n\n")
+            output_parts.append(f"CAPTURED FLAG(S): {', '.join(flags)}\n\n")
         if stdout:
             output_parts.append(stdout)
         if stderr and ("error" in stderr.lower() or "failed" in stderr.lower() or code != 0):
@@ -2231,7 +1825,7 @@ class CTFDevToolsApp(App):
         hdrs_str = "\n".join([f"{k}: {v}" for k, v in parsed["headers"].items()])
         self.query_one("#rep-headers", TextArea).text = hdrs_str
         self.query_one("#rep-body", TextArea).text = parsed["body"]
-        self.query_one(TabbedContent).active = "tab-repeater"
+        self.action_jump_workspace("tab-repeater")
         self.notify("Sent parsed cURL request to Repeater!")
 
     def action_curl_to_python(self):
@@ -2247,30 +1841,12 @@ class CTFDevToolsApp(App):
 
     def action_copy_curl_command(self):
         cmd = self.query_one("#txt-curl-cmd", TextArea).text.strip()
-        if not cmd:
-            return
-        try:
-            import shutil, subprocess
-            if shutil.which("xclip"):
-                subprocess.run(["xclip", "-selection", "clipboard"], input=cmd.encode(), check=False)
-            elif shutil.which("wl-copy"):
-                subprocess.run(["wl-copy"], input=cmd.encode(), check=False)
-        except Exception:
-            pass
+        self._copy_to_system_clipboard(cmd)
         self.notify("Copied cURL command to clipboard!")
 
     def action_copy_curl_response(self):
         resp = self.query_one("#txt-curl-resp", TextArea).text
-        if not resp:
-            return
-        try:
-            import shutil, subprocess
-            if shutil.which("xclip"):
-                subprocess.run(["xclip", "-selection", "clipboard"], input=resp.encode(), check=False)
-            elif shutil.which("wl-copy"):
-                subprocess.run(["wl-copy"], input=resp.encode(), check=False)
-        except Exception:
-            pass
+        self._copy_to_system_clipboard(resp)
         self.notify("Copied output to clipboard!")
 
     def action_scan_curl_flags(self):
@@ -2322,7 +1898,7 @@ class CTFDevToolsApp(App):
         else:
             new_url = f"{rep_url.rstrip('/')}/?id={urllib.parse.quote(payload)}"
         self.query_one("#rep-url", Input).value = new_url
-        self.query_one(TabbedContent).active = "tab-repeater"
+        self.action_jump_workspace("tab-repeater")
         self.notify("Injected SQL payload into Repeater URL!")
 
     def action_sqli_to_curl(self):
@@ -2332,8 +1908,8 @@ class CTFDevToolsApp(App):
         target = self.query_one("#target-url", Input).value.strip() or self.initial_url
         cmd = f'curl -i -k -G "{target.rstrip("/")}/" --data-urlencode "id={payload}"'
         self.query_one("#txt-curl-cmd", TextArea).text = cmd
-        self.query_one(TabbedContent).active = "tab-curl"
-        self.notify("Sent SQL payload to cURL Workshop!")
+        self.action_jump_workspace("tab-repeater")
+        self.notify("Sent SQL payload to cURL Studio!")
 
     def action_copy_sqli_payload(self):
         payload = self.query_one("#txt-sqli-editor", TextArea).text.strip()
@@ -2364,7 +1940,7 @@ class CTFDevToolsApp(App):
         flags = self.flag_tracker.scan(output)
         if flags:
             self.update_flag_display()
-            self.notify(f"🚩 FLAG IN PHP OUTPUT: {', '.join(flags)}", severity="warning", timeout=5)
+            self.notify(f"FLAG IN PHP OUTPUT: {', '.join(flags)}", severity="warning", timeout=5)
 
         self.query_one("#txt-php-output", TextArea).text = output
 
@@ -2373,7 +1949,7 @@ class CTFDevToolsApp(App):
             return
         item = PHP_LFI_WRAPPERS[row_idx]
         self._copy_to_system_clipboard(item["wrapper"])
-        self.notify(f"Copied wrapper to clipboard: {item['name']}")
+        self.notify(f"Copied wrapper: {item['name']}")
 
     def load_selected_php_hash(self, row_idx: int):
         if not (0 <= row_idx < len(PHP_MAGIC_HASHES)):
@@ -2388,7 +1964,7 @@ class CTFDevToolsApp(App):
             return
         self.query_one("#rep-body", TextArea).text = code
         self.query_one("#rep-method", Input).value = "POST"
-        self.query_one(TabbedContent).active = "tab-repeater"
+        self.action_jump_workspace("tab-repeater")
         self.notify("Sent PHP script to Repeater POST body!")
 
     def action_copy_php_code(self):
@@ -2420,7 +1996,7 @@ class CTFDevToolsApp(App):
         if not payload:
             return
         self.query_one("#rep-body", TextArea).text = payload
-        self.query_one(TabbedContent).active = "tab-repeater"
+        self.action_jump_workspace("tab-repeater")
         self.notify("Sent payload to Repeater!")
 
     def action_payload_to_curl(self):
@@ -2430,13 +2006,262 @@ class CTFDevToolsApp(App):
         target = self.query_one("#target-url", Input).value.strip() or self.initial_url
         cmd = f'curl -i -k -X POST "{target.rstrip("/")}/" -d "{payload}"'
         self.query_one("#txt-curl-cmd", TextArea).text = cmd
-        self.query_one(TabbedContent).active = "tab-curl"
-        self.notify("Sent payload to cURL Workshop!")
+        self.action_jump_workspace("tab-repeater")
+        self.notify("Sent payload to cURL Studio!")
 
     def action_copy_payload_string(self):
         payload = self.query_one("#txt-payload-view", TextArea).text.strip()
         self._copy_to_system_clipboard(payload)
         self.notify("Copied payload string to clipboard!")
+
+    # ---------------------------------------------------------
+    # Decoders
+    # ---------------------------------------------------------
+    def _get_dec_input(self) -> str:
+        return self.query_one("#dec-input", TextArea).text.strip()
+
+    def _set_dec_output(self, text: str):
+        self.query_one("#dec-output", TextArea).text = text
+        flags = self.flag_tracker.scan(text)
+        if flags:
+            self.update_flag_display()
+            self.notify(f"FLAG FOUND IN DECODED OUTPUT: {', '.join(flags)}", severity="warning", timeout=6)
+
+    def handle_decode(self, decode_func):
+        self._set_dec_output(decode_func(self._get_dec_input()))
+
+    def handle_jwt_parse(self):
+        res = inspect_jwt(self._get_dec_input())
+        self._set_dec_output(json.dumps(res, indent=2))
+
+    def handle_flask_session(self):
+        res = unpack_flask_session(self._get_dec_input())
+        self._set_dec_output(json.dumps(res, indent=2))
+
+    def handle_hash_id(self):
+        res = identify_hash(self._get_dec_input())
+        self._set_dec_output("\n".join(res))
+
+    # ---------------------------------------------------------
+    # WebSockets
+    # ---------------------------------------------------------
+    async def action_ws_connect(self):
+        url = self.query_one("#ws-url", Input).value.strip()
+        self.ws_mgr = WebSocketManager(url)
+        self.notify(f"Connecting to WebSocket: {url}...")
+        connected = await self.ws_mgr.connect()
+        if connected:
+            self.notify("Connected to WebSocket stream!", timeout=2)
+            asyncio.create_task(self._listen_ws())
+        else:
+            self.notify("Failed to connect to WebSocket", severity="error")
+
+    async def _listen_ws(self):
+        log_view = self.query_one("#txt-ws-log", TextArea)
+        while self.ws_mgr and self.ws_mgr.connected:
+            frame = await self.ws_mgr.receive_frame()
+            if frame:
+                flags = self.flag_tracker.scan(frame.data)
+                self.update_flag_display()
+                flag_str = f" [FLAG: {', '.join(flags)}]" if flags else ""
+                cur = log_view.text
+                log_view.text = f"[{frame.timestamp}] <RECV> {frame.data}{flag_str}\n" + cur
+            await asyncio.sleep(0.05)
+
+    async def action_ws_disconnect(self):
+        if self.ws_mgr:
+            await self.ws_mgr.disconnect()
+            self.notify("Disconnected from WebSocket")
+
+    async def action_ws_send(self):
+        payload = self.query_one("#ws-payload", Input).value.strip()
+        if self.ws_mgr and self.ws_mgr.connected:
+            await self.ws_mgr.send_frame(payload)
+            log_view = self.query_one("#txt-ws-log", TextArea)
+            log_view.text = f"[SENT] > {payload}\n" + log_view.text
+
+    # ---------------------------------------------------------
+    # OOB Callbacks
+    # ---------------------------------------------------------
+    async def action_oob_start(self):
+        port_s = self.query_one("#oob-port", Input).value.strip()
+        port = int(port_s) if port_s.isdigit() else 9999
+        self.oob_listener = OOBListener(port, self.flag_tracker)
+        ok = await self.oob_listener.start()
+        if ok:
+            self.notify(f"OOB Listener active on port {port}!")
+            asyncio.create_task(self._poll_oob())
+        else:
+            self.notify(f"Could not bind to port {port}", severity="error")
+
+    async def _poll_oob(self):
+        tbl = self.query_one("#tbl-oob", DataTable)
+        while self.oob_listener and self.oob_listener.running:
+            if self.oob_listener.requests:
+                tbl.clear()
+                for req in self.oob_listener.requests:
+                    tbl.add_row(req.timestamp, req.client_ip, req.method, req.path, req.body[:30])
+                self.update_flag_display()
+            await asyncio.sleep(1)
+
+    async def action_oob_stop(self):
+        if self.oob_listener:
+            await self.oob_listener.stop()
+            self.notify("OOB Listener stopped")
+
+    # ---------------------------------------------------------
+    # JS Console & Deobfuscator
+    # ---------------------------------------------------------
+    async def action_run_js(self):
+        code = self.query_one("#txt-js-input", TextArea).text.strip()
+        if not code:
+            self.notify("Enter JavaScript code to execute", severity="warning")
+            return
+        self.notify("Evaluating JS sandbox...", timeout=1)
+        res = await self.js_engine.evaluate(code, self.flag_tracker)
+        
+        self.query_one("#lbl-js-status", Label).update(
+            f"Status: {'Success' if res.success else 'Error'} | Time: {res.elapsed_ms:.1f}ms"
+        )
+        
+        flags = self.flag_tracker.scan(res.output + "\n" + res.error)
+        if flags:
+            self.update_flag_display()
+            self.notify(f"FLAG DETECTED IN JS OUTPUT: {', '.join(flags)}", timeout=5)
+
+        output_parts = []
+        if flags:
+            output_parts.append(f"CAPTURED FLAGS: {', '.join(flags)}\n\n")
+        if res.output:
+            output_parts.append(res.output)
+        if res.error:
+            output_parts.append(f"\n[Runtime Error]:\n{res.error}")
+        if not res.output and not res.error:
+            output_parts.append("(Script executed with no output - try console.log)")
+
+        self.query_one("#txt-js-output", TextArea).text = "".join(output_parts)
+
+    async def action_preload_js_scripts(self):
+        if not self.discovered_assets:
+            self.notify("Analyze target first to discover JS files", severity="warning")
+            return
+        js_urls = [a["url"] for a in self.discovered_assets if a["type"] == "JavaScript"]
+        if not js_urls:
+            self.notify("No external JS files discovered", severity="warning")
+            return
+        
+        self.notify(f"Preloading {len(js_urls)} script(s) into sandbox...", timeout=2)
+        count = await self.js_engine.preload_target_scripts(js_urls)
+        self.notify(f"Preloaded {count} external scripts into sandbox environment!")
+
+    def action_deobfuscate_js(self):
+        code = self.query_one("#txt-js-input", TextArea).text
+        if not code.strip():
+            return
+        deobf = deobfuscate_javascript(code)
+        self.query_one("#txt-js-output", TextArea).text = (
+            "=== DEOBFUSCATED JAVASCRIPT OUTPUT ===\n\n" + deobf
+        )
+        self.notify("Deobfuscated string encodings & hex literals!")
+
+    # ---------------------------------------------------------
+    # Network Traffic Logging & CSRF Generator
+    # ---------------------------------------------------------
+    def refresh_network_table(self):
+        tbl = self.query_one("#tbl-network", DataTable)
+        tbl.clear()
+        for e in self.network_logger.entries:
+            tbl.add_row(
+                str(e.id),
+                e.timestamp,
+                e.method,
+                str(e.status),
+                f"{e.bytes_len}b",
+                f"{e.latency_ms:.0f}ms",
+                e.url
+            )
+
+    def display_selected_network_entry(self, row_idx: int):
+        if not (0 <= row_idx < len(self.network_logger.entries)):
+            return
+        entry = self.network_logger.entries[row_idx]
+        self.selected_network_entry = entry
+        
+        req_hdrs = "\n".join([f"  {k}: {v}" for k, v in entry.req_headers.items()])
+        resp_hdrs = "\n".join([f"  {k}: {v}" for k, v in entry.resp_headers.items()])
+        
+        detail_text = (
+            f"=== REQUEST #{entry.id}: {entry.method} {entry.url} ===\n"
+            f"Time: {entry.timestamp} | Status: {entry.status} | Latency: {entry.latency_ms:.1f}ms\n\n"
+            f"[Request Headers]:\n{req_hdrs or '  (None)'}\n\n"
+            f"[Request Body]:\n{entry.req_body or '(Empty)'}\n\n"
+            f"-----------------------------------------\n"
+            f"[Response Headers]:\n{resp_hdrs or '  (None)'}\n\n"
+            f"[Response Body Snippet]:\n{entry.resp_body or '(Empty)'}"
+        )
+        self.query_one("#txt-net-details", TextArea).text = detail_text
+
+    def action_replay_network_entry(self):
+        if not self.selected_network_entry:
+            tbl = self.query_one("#tbl-network", DataTable)
+            if 0 <= tbl.cursor_row < len(self.network_logger.entries):
+                self.selected_network_entry = self.network_logger.entries[tbl.cursor_row]
+        if not self.selected_network_entry:
+            self.notify("Select a request in the Network log first", severity="warning")
+            return
+        
+        e = self.selected_network_entry
+        self.query_one("#rep-url", Input).value = e.url
+        self.query_one("#rep-method", Input).value = e.method
+        hdrs_str = "\n".join([f"{k}: {v}" for k, v in e.req_headers.items()])
+        self.query_one("#rep-headers", TextArea).text = hdrs_str
+        self.query_one("#rep-body", TextArea).text = e.req_body
+        self.action_jump_workspace("tab-repeater")
+        self.notify(f"Loaded Request #{e.id} into Repeater!")
+
+    def action_export_network_curl(self):
+        if not self.selected_network_entry:
+            tbl = self.query_one("#tbl-network", DataTable)
+            if 0 <= tbl.cursor_row < len(self.network_logger.entries):
+                self.selected_network_entry = self.network_logger.entries[tbl.cursor_row]
+        if not self.selected_network_entry:
+            return
+        e = self.selected_network_entry
+        cmd = self.repeater_engine.to_curl(e.method, e.url, e.req_headers, e.req_body)
+        self._copy_to_system_clipboard(cmd)
+        self.notify(f"Copied cURL for Request #{e.id} to clipboard!")
+
+    def action_generate_csrf_poc(self):
+        if not self.selected_network_entry:
+            tbl = self.query_one("#tbl-network", DataTable)
+            if 0 <= tbl.cursor_row < len(self.network_logger.entries):
+                self.selected_network_entry = self.network_logger.entries[tbl.cursor_row]
+        if not self.selected_network_entry:
+            self.notify("Select a POST/PUT request to generate CSRF PoC", severity="warning")
+            return
+        e = self.selected_network_entry
+        poc = generate_csrf_poc(e.url, e.method, e.req_body)
+        self.query_one("#txt-net-details", TextArea).text = (
+            f"=== AUTOMATED CSRF HTML EXPLOIT POC FOR #{e.id} ===\n\n" + poc
+        )
+        self.notify("Generated CSRF PoC in Details pane!")
+
+    # ---------------------------------------------------------
+    # Session & Global Flag Display
+    # ---------------------------------------------------------
+    def action_save_session(self):
+        s_name = self.query_one("#inp-session", Input).value.strip() or "challenge_1"
+        data = {
+            "initial_url": self.initial_url,
+            "flags": self.flag_tracker.flags,
+            "cookies": self.cookie_storage.cookies,
+            "global_headers": self.cookie_storage.global_headers,
+            "discovered_assets": self.discovered_assets,
+            "network_log_count": len(self.network_logger.entries),
+            "version": __version__
+        }
+        self.session_mgr.save_session(s_name, data)
+        self.notify(f"Session '{s_name}' saved to disk!")
 
     def _copy_to_system_clipboard(self, text: str):
         if not text:
@@ -2451,6 +2276,3 @@ class CTFDevToolsApp(App):
                 subprocess.run(["clip"], input=text.encode(), check=False)
         except Exception:
             pass
-
-
-
