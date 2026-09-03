@@ -1,0 +1,45 @@
+[project]
+name = "ctf-devtools"
+version = "1.0.0"
+description = "Terminal Web DevTools and Offensive Workstation for CTF Web Security Challenges"
+readme = "README.md"
+authors = [
+    { name = "BrianC0des" }
+]
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "textual>=6.0.0",
+    "httpx>=0.27.0",
+    "beautifulsoup4>=4.12.0",
+    "websockets>=13.0",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+]
+
+[project.urls]
+Homepage = "https://github.com/BrianC0des/ctf-devtools"
+Repository = "https://github.com/BrianC0des/ctf-devtools"
+
+[project.scripts]
+ctf-dev = "ctf_devtools.cli:main"
+ctf-devtools = "ctf_devtools.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
