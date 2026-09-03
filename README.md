@@ -36,28 +36,40 @@ Inspired by browser DevTools, Burp Suite, and CyberChef, **CTF DevTools** combin
 
 ## 📦 Installation
 
-### Prerequisites
+### ⚡ 1-Line Quick Install
+
+#### Linux / macOS / WSL:
+```bash
+curl -sSL https://raw.githubusercontent.com/BrianC0des/ctf-devtools/main/install.sh | bash
+```
+
+#### Windows (PowerShell):
+```powershell
+irm https://raw.githubusercontent.com/BrianC0des/ctf-devtools/main/install.ps1 | iex
+```
+
+---
+
+### 🔧 Manual Installation (from Git)
+
+#### Prerequisites
 - Python 3.10 or higher
 - Optional: `curl`, `php` (for local PHP sandbox), `node` (for JS console)
 
-### Linux / macOS / WSL
+#### Linux / macOS / WSL
 ```bash
-# Clone the repository
 git clone https://github.com/BrianC0des/ctf-devtools.git
 cd ctf-devtools
-
-# Install package in editable mode
-pip install -e .
+./install.sh
+# Or manually: pip install -e .
 ```
 
-### Windows (Native Command Prompt / PowerShell)
+#### Windows (Command Prompt / PowerShell)
 ```powershell
-# Clone the repository
 git clone https://github.com/BrianC0des/ctf-devtools.git
 cd ctf-devtools
-
-# Install package
-pip install -e .
+.\install.ps1
+# Or manually: pip install -e .
 ```
 *Note: On Windows, CTF DevTools automatically enables VT100 ANSI sequences and UTF-8 console output for crystal-clear visuals.*
 
