@@ -869,6 +869,30 @@ class CTFDevToolsApp(App):
         elif event.input.id == "inp-payload-search":
             self.action_search_payload_vault()
 
+    async def _auto_analyze_delayed(self, url: str):
+        try:
+            await asyncio.sleep(0.7)
+            await self.action_analyze_url()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
+
+    async def action_analyze_target(self):
+        await self.action_analyze_url()
+
+    def update_flag_display(self):
+        try:
+            all_flags = self.flag_tracker.get_all_flags()
+            lbl = self.query_one("#lbl-flags", Label)
+            lbl.update(f"🚩 {len(all_flags)} FLAGS")
+            
+            txt_flags = self.query_one("#txt-all-flags", TextArea)
+            if all_flags:
+                txt_flags.text = "\n".join([f"[{idx+1}] {f}" for idx, f in enumerate(all_flags)])
+        except Exception:
+            pass
+
     def _handle_table_row_action(self, table_id: str, row_idx: int) -> None:
         if table_id == "tbl-assets":
             if 0 <= row_idx < len(self.discovered_assets):
