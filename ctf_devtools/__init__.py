@@ -1,3 +1,4 @@
+from __future__ import annotations
 """CTF DevTools - Offensive Terminal Workstation for Web Security & CTF Challenges."""
 
 __version__ = "1.0.0"

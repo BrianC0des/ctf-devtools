@@ -1,3 +1,4 @@
+from __future__ import annotations
 """CLI entrypoint for CTF DevTools."""
 import argparse
 import asyncio

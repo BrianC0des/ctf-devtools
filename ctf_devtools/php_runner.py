@@ -1,3 +1,4 @@
+from __future__ import annotations
 """PHP Sandbox Environment, CTF Gadget Builder, Magic Hashes, and LFI Wrapper Crafter."""
 import asyncio
 import os

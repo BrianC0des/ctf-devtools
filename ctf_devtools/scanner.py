@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Automated CTF reconnaissance, sensitive file probing, and tech stack fingerprinting."""
 import asyncio
 import random

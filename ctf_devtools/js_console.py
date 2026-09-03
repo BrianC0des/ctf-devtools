@@ -1,3 +1,4 @@
+from __future__ import annotations
 """JavaScript Interactive Console & Deobfuscation Engine for CTFs."""
 import asyncio
 import json

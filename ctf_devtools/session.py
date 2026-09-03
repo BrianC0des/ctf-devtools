@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Session persistence for CTF challenges."""
 import json
 import os

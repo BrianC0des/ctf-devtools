@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Request composer, repeater, intruder/fuzzer, and response diff engine."""
 import asyncio
 import difflib

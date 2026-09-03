@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Universal CTF Web Exploitation Payload Vault and Search Engine."""
 from typing import Dict, List, Any
 

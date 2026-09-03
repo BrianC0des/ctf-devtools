@@ -1,3 +1,4 @@
+from __future__ import annotations
 """DOM, HTML comments, forms, and asset/file extraction."""
 import re
 import urllib.parse

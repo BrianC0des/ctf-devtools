@@ -1,3 +1,4 @@
+from __future__ import annotations
 """HTML Elements DOM Tree Explorer for CTF DevTools."""
 import re
 from typing import Optional, Dict, Any, List

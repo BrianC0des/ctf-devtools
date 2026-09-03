@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Cross-platform compatibility utilities for Windows (native & WSL), Linux, and macOS."""
 import os
 import sys

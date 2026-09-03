@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Main Textual TUI Application for CTF DevTools with modern transparent aesthetics."""
 import asyncio
 import json

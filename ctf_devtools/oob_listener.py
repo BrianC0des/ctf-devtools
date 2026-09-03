@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Local Out-Of-Band (OOB) HTTP callback listener for Blind SSRF and XSS."""
 import asyncio
 from datetime import datetime

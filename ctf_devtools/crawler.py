@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Site spider and JavaScript endpoint extractor."""
 import asyncio
 import re

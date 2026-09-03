@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Unified Comments Gatherer for HTML, inline styles/scripts, and external CSS/JS files."""
 import asyncio
 import re

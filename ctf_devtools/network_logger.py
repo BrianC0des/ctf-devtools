@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Central HTTP Network Traffic Logger tracking requests and responses across all tools."""
 from dataclasses import dataclass
 import time

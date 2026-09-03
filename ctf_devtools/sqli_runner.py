@@ -1,3 +1,4 @@
+from __future__ import annotations
 """SQL Injection Workbench, DBMS Dialects, Payload Crafter, and WAF Bypass Encoders."""
 import re
 import urllib.parse

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Encoding, decoding, hash identification, and session token analysis."""
 import base64
 import codecs
@@ -6,7 +7,7 @@ import json
 import re
 import urllib.parse
 import zlib
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Tuple, Union
 
 def base64_decode(text: str) -> str:
     text = text.strip()

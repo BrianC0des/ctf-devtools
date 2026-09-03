@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Storage and Cookie Manager: Cookie Jar, Global Auth Headers, and Client Storage Harvester."""
 import json
 import re

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """WebSocket client connection, frame monitor, and frame sender."""
 import asyncio
 from datetime import datetime

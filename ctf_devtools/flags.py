@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Flag detection and pattern tracking."""
 import re
 from typing import List, Set

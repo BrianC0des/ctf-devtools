@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Interactive cURL Workbench and CTF Script Templates."""
 import asyncio
 import shlex
