@@ -27,12 +27,26 @@ if (Get-Command python -ErrorAction SilentlyContinue) {
 $pyVer = & $pythonCmd -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
 Write-Host "[+] Detected Python $pyVer ($pythonCmd)" -ForegroundColor Green
 
-# 2. Install Package
-Write-Host "[*] Installing CTF DevTools package..." -ForegroundColor Blue
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $scriptDir
-
-& $pythonCmd -m pip install -e .
+# 2. Check Directory & Source Setup
+$installDir = Join-Path $env:USERPROFILE ".ctf-devtools"
+if (Test-Path "pyproject.toml") {
+    Write-Host "[*] Installing from local repository directory..." -ForegroundColor Blue
+    & $pythonCmd -m pip install -e .
+} else {
+    Write-Host "[*] Downloading CTF DevTools from GitHub to $installDir ..." -ForegroundColor Blue
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        if (Test-Path "$installDir\.git") {
+            git -C $installDir pull --quiet
+        } else {
+            git clone --quiet https://github.com/BrianC0des/ctf-devtools.git $installDir
+        }
+        Set-Location $installDir
+        & $pythonCmd -m pip install -e .
+    } else {
+        Write-Host "[*] Git not found, installing directly via pip..." -ForegroundColor Blue
+        & $pythonCmd -m pip install "git+https://github.com/BrianC0des/ctf-devtools.git"
+    }
+}
 
 # 3. Check Optional Tools
 Write-Host ""

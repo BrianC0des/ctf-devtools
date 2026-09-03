@@ -41,44 +41,69 @@ if [ "$PY_MAJOR" -lt 3 ] || ([ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 10 ]); t
 fi
 echo -e "${GREEN}[+] Detected Python $PY_VER ($PYTHON_BIN)${NC}"
 
-# 2. Detect pip
-echo -e "${BLUE}[*] Checking pip...${NC}"
-if ! $PYTHON_BIN -m pip --version &>/dev/null; then
-    echo -e "${YELLOW}[!] pip not found. Attempting to install pip via ensurepip...${NC}"
-    $PYTHON_BIN -m ensurepip --default-pip || true
+# 2. Check Git & Setup Source Directory
+INSTALL_DIR="${HOME}/.ctf-devtools"
+if [ -f "pyproject.toml" ] && [ -d "ctf_devtools" ]; then
+    TARGET_DIR="$(pwd)"
+    echo -e "${BLUE}[*] Installing from local directory: $TARGET_DIR${NC}"
+else
+    echo -e "${BLUE}[*] Downloading CTF DevTools from GitHub...${NC}"
+    if command -v git &>/dev/null; then
+        if [ -d "$INSTALL_DIR/.git" ]; then
+            echo -e "${CYAN}[*] Updating existing installation in $INSTALL_DIR...${NC}"
+            git -C "$INSTALL_DIR" pull --quiet || true
+        else
+            mkdir -p "$INSTALL_DIR"
+            git clone --quiet https://github.com/BrianC0des/ctf-devtools.git "$INSTALL_DIR"
+        fi
+        TARGET_DIR="$INSTALL_DIR"
+    else
+        echo -e "${BLUE}[*] Git not found, installing directly via pip from GitHub...${NC}"
+        $PYTHON_BIN -m pip install "git+https://github.com/BrianC0des/ctf-devtools.git" --break-system-packages || \
+        $PYTHON_BIN -m pip install "git+https://github.com/BrianC0des/ctf-devtools.git" --user || \
+        $PYTHON_BIN -m pip install "git+https://github.com/BrianC0des/ctf-devtools.git"
+        TARGET_DIR=""
+    fi
 fi
 
 # 3. Install Package
-echo -e "${BLUE}[*] Installing CTF DevTools...${NC}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
-
-if $PYTHON_BIN -m pip install -e . --break-system-packages &>/dev/null; then
-    echo -e "${GREEN}[+] Installed successfully (editable mode)!${NC}"
-elif $PYTHON_BIN -m pip install -e . &>/dev/null; then
-    echo -e "${GREEN}[+] Installed successfully (editable mode)!${NC}"
-elif $PYTHON_BIN -m pip install --user -e . &>/dev/null; then
-    echo -e "${GREEN}[+] Installed successfully (user space)!${NC}"
-else
-    echo -e "${YELLOW}[!] Standard install failed, trying virtualenv approach...${NC}"
-    $PYTHON_BIN -m venv .venv
-    source .venv/bin/activate
-    pip install -e .
-    echo -e "${GREEN}[+] Installed inside dedicated .venv environment!${NC}"
+if [ -n "$TARGET_DIR" ]; then
+    cd "$TARGET_DIR"
+    echo -e "${BLUE}[*] Installing dependencies and CLI entrypoints...${NC}"
+    if $PYTHON_BIN -m pip install -e . --break-system-packages &>/dev/null; then
+        echo -e "${GREEN}[+] Installed successfully!${NC}"
+    elif $PYTHON_BIN -m pip install -e . &>/dev/null; then
+        echo -e "${GREEN}[+] Installed successfully!${NC}"
+    elif $PYTHON_BIN -m pip install --user -e . &>/dev/null; then
+        echo -e "${GREEN}[+] Installed successfully in user space!${NC}"
+    else
+        echo -e "${YELLOW}[*] Setting up dedicated venv environment in $TARGET_DIR/.venv ...${NC}"
+        $PYTHON_BIN -m venv .venv
+        .venv/bin/pip install -e .
+        mkdir -p "${HOME}/.local/bin"
+        ln -sf "${TARGET_DIR}/.venv/bin/ctf-dev" "${HOME}/.local/bin/ctf-dev"
+        ln -sf "${TARGET_DIR}/.venv/bin/ctf-devtools" "${HOME}/.local/bin/ctf-devtools"
+        echo -e "${GREEN}[+] Created shims in ~/.local/bin/ !${NC}"
+    fi
 fi
 
-# 4. Check Optional Tools
+# 4. Check PATH for ~/.local/bin
+if [[ ":$PATH:" != *":${HOME}/.local/bin:"* ]]; then
+    export PATH="${HOME}/.local/bin:$PATH"
+fi
+
+# 5. Check Optional Tools
 echo ""
 echo -e "${CYAN}[*] Checking Recommended Companion Tools:${NC}"
 for tool in curl php node; do
     if command -v $tool &>/dev/null; then
         echo -e "  • ${GREEN}✓ $tool${NC} : $(which $tool)"
     else
-        echo -e "  • ${YELLOW}○ $tool${NC} : Not found (optional, used for local sandbox execution)"
+        echo -e "  • ${YELLOW}○ $tool${NC} : Not found in PATH (optional, for local script sandboxes)"
     fi
 done
 
-# 5. Create default download directory
+# 6. Create default download directory
 DL_DIR="${HOME}/CTF/sandbox/ctf-dev-downloads"
 mkdir -p "$DL_DIR"
 echo -e "  • ${GREEN}✓ Downloads Dir${NC} : $DL_DIR"
