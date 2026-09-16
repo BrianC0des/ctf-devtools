@@ -18,6 +18,14 @@ class NetworkEntry:
     resp_headers: Dict[str, str]
     resp_body: str
 
+    @property
+    def status(self) -> int:
+        return self.status_code
+
+    @property
+    def latency_ms(self) -> float:
+        return self.elapsed_ms
+
 class NetworkLogger:
     """Records and indexes all HTTP traffic passing through CTF DevTools."""
     def __init__(self, max_entries: int = 300):

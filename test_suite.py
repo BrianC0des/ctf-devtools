@@ -107,7 +107,24 @@ async def run_tests():
     scripts = dom.extract_scripts()
     assert scripts[0]["src"] == "/static/app.js"
     assert scripts[0]["map_url"] == "/static/app.js.map"
-    print("  ✓ DOM comments, forms, hidden inputs, and script extraction passed!")
+
+    # Test async URL analysis with flag tracker and cookie storage
+    from ctf_devtools.storage_mgr import CookieAndStorageManager
+    flags_test = FlagTracker()
+    cookies_test = CookieAndStorageManager()
+    dom_target = DOMAnalyzer(f"http://127.0.0.1:{PORT}", flags_test, cookies_test)
+    resp = await dom_target.fetch_and_parse()
+    assert resp.status_code == 200
+    assert "CTF Target" in resp.body
+    assert len(dom_target.comments) >= 1
+    assert any("CTF{dom_comment_flag_found}" in str(c) for c in dom_target.comments)
+    assert len(dom_target.forms) >= 1
+    assert dom_target.forms[0]["method"] == "POST"
+    assert any(inp["name"] == "csrf" for inp in dom_target.forms[0]["inputs"])
+    online_assets = dom_target.extract_assets()
+    assert any("/static/app.js" in a["url"] for a in online_assets)
+    assert "CTF{dom_comment_flag_found}" in flags_test.get_all_flags()
+    print("  ✓ DOM comments, forms, hidden inputs, script extraction, and live async URL analyzer passed!")
 
     print("\n=== [3] TESTING RECON SCANNER ===")
     flags = FlagTracker()
@@ -353,13 +370,124 @@ async def run_tests():
     assert find_binary("python3") or find_binary("python")
     print("  ✓ Semantic versioning v1.0.0 and cross-platform compatibility passed!")
 
-    print("\n=== [16] FLAG TRACKER SUMMARY ===")
+    print("\n=== [17] TESTING RECENT POLISH & EXTENSIONS ===")
+    # 1. NetworkEntry status and latency_ms
+    assert entry.status == 200
+    assert entry.latency_ms == 14.5
+    
+    # 2. SessionManager save_session and FlagTracker flags property
+    from ctf_devtools.session import SessionManager
+    sm = SessionManager("test_ch")
+    saved_path = sm.save_session("my_chal", {"test": True})
+    assert "my_chal.ctf.json" in saved_path
+    assert flags.flags == flags.get_all_flags()
+    import os
+    if os.path.exists(saved_path):
+        os.remove(saved_path)
+
+    # 3. DOM Tree filter_query and text node formatting
+    tree_dummy = Tree("Root")
+    build_dom_tree(tree_dummy, HTML_DOC, filter_query="login", hidden_only=False)
+    assert format_tag_details("Sample text leaf").startswith("=== TEXT NODE ===")
+
+    # 4. Comments gatherer secrets scan
+    from ctf_devtools.comments_gatherer import CommentsGatherer
+    cg = CommentsGatherer(f"http://127.0.0.1:{PORT}", flags)
+    await cg.gather_all(HTML_DOC + "<!-- api_key = 'AIzaSyTestApiKeySecret12345' -->")
+    secrets = cg.scan_secrets()
+    assert len(secrets) >= 1
+    assert any("api_key" in s["category"] or "Google" in s["category"] or "API" in s["category"] for s in secrets)
+
+    # 5. Storage manager properties & del_cookie & set_header
+    csm.set_header("X-CTF-Header", "Active")
+    assert csm.global_headers["X-CTF-Header"] == "Active"
+    csm.set_cookie("temp_cookie", "to_be_deleted")
+    assert "temp_cookie" in csm.cookies
+    csm.del_cookie("temp_cookie")
+    assert "temp_cookie" not in csm.cookies
+    assert isinstance(csm.local_storage, list)
+    assert isinstance(csm.session_storage, list)
+
+    # 6. Repeater alias methods & fuzzing
+    rep_send_res = await repeater.send("GET", f"http://127.0.0.1:{PORT}/about")
+    assert rep_send_res.status_code == 200
+    py_code2 = repeater.to_python("GET", f"http://127.0.0.1:{PORT}/about")
+    assert "requests.get" in py_code2 or "requests.request" in py_code2
+    fuzz_res = await repeater.fuzz("GET", f"http://127.0.0.1:{PORT}/?q=FUZZ", payloads=["a", "b"])
+    assert len(fuzz_res) == 2
+    assert hasattr(fuzz_res[0], "body")
+    assert hasattr(fuzz_res[0], "length")
+
+    # 7. WebSocket manager flexible init and methods
+    from ctf_devtools.websocket_mgr import WebSocketManager, WSFrame
+    ws_mgr = WebSocketManager(flag_tracker=flags)
+    assert ws_mgr.connected is False
+    frame = WSFrame(direction="IN", payload="test payload")
+    assert frame.data == "test payload"
+
+    # 8. OOB listener properties
+    oob2 = OOBListener(port=9997, flag_tracker=flags)
+    assert oob2.running is False
+    assert isinstance(oob2.requests, list)
+
+    # 9. JS console evaluate and preload_target_scripts
+    eval_res = await js_engine.evaluate("40 + 2")
+    assert "42" in eval_res.output
+    assert not eval_res.error
+    await js_engine.preload_target_scripts([f"http://127.0.0.1:{PORT}/static/app.js"])
+    assert len(js_engine.preloaded_scripts) >= 1
+
+    print("  ✓ All API polish, backward-compat aliases, and module extensions verified!")
+
+    print("\n=== [19] TESTING INPUT DETECTOR & TEMPLATE/FRAMEWORK FINGERPRINTING ===")
+    from ctf_devtools.scanner import detect_templates_and_frameworks
+
+    # 1. Parameter extraction
+    dom_with_params = DOMAnalyzer(HTML_DOC, base_url="http://target.ctf/search?q=query_test&page=2")
+    params = dom_with_params.parameters
+    assert len(params) >= 4
+    param_names = [p["name"] for p in params]
+    assert "q" in param_names
+    assert "page" in param_names
+    assert "user" in param_names
+    assert "csrf" in param_names
+    q_param = next(p for p in params if p["name"] == "q")
+    assert q_param["source"] == "URL Query"
+    assert q_param["value"] == "query_test"
+    csrf_param = next(p for p in params if p["name"] == "csrf")
+    assert "Form" in csrf_param["source"]
+    assert csrf_param["type"] == "hidden"
+    assert csrf_param["value"] == "secret_csrf_123"
+
+    # 2. Passive template and framework detection
+    flask_fw = detect_templates_and_frameworks({"Server": "Werkzeug/3.0.1 Python/3.14", "X-Powered-By": "Flask"}, {})
+    assert "Flask" in flask_fw.get("Framework", "")
+    assert flask_fw.get("Template Engine") == "Jinja2"
+
+    django_fw = detect_templates_and_frameworks({}, {"csrftoken": "d_tok_123"})
+    assert "Django" in django_fw.get("Framework", "")
+    assert "DTL" in django_fw.get("Template Engine", "")
+
+    express_fw = detect_templates_and_frameworks({"X-Powered-By": "Express"}, {"connect.sid": "s_123"})
+    assert "Express" in express_fw.get("Framework", "")
+    assert "EJS" in express_fw.get("Template Engine", "")
+
+    php_fw = detect_templates_and_frameworks({}, {"PHPSESSID": "php_sess_abc"})
+    assert "PHP" in php_fw.get("Framework", "")
+
+    spring_fw = detect_templates_and_frameworks({}, {"JSESSIONID": "java_sess_xyz"})
+    assert "Spring" in spring_fw.get("Framework", "")
+    assert "Thymeleaf" in spring_fw.get("Template Engine", "")
+
+    print("  ✓ Input parameter detection (GET & Form inputs) and passive template/framework fingerprinting passed!")
+
+    print("\n=== [20] FLAG TRACKER SUMMARY ===")
     all_flags = flags.get_all_flags()
     print(f"  [+] Captured Flags Total: {len(all_flags)}")
     for f in all_flags:
         print(f"      • {f}")
     assert len(all_flags) >= 5
-    print("\n>>> ALL 16 TEST SUITES PASSED SUCCESSFULLY! <<<")
+    print("\n>>> ALL 20 TEST SUITES PASSED SUCCESSFULLY! <<<")
 
 if __name__ == "__main__":
     t = threading.Thread(target=start_server, daemon=True)

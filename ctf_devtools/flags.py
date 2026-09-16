@@ -36,3 +36,7 @@ class FlagTracker:
 
     def get_all_flags(self) -> List[str]:
         return sorted(list(self.found_flags))
+
+    @property
+    def flags(self) -> List[str]:
+        return self.get_all_flags()

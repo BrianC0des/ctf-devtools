@@ -24,6 +24,15 @@ class FuzzResult:
     length: int
     elapsed_ms: float
     flags: List[str]
+    body: str = ""
+
+DEFAULT_FUZZ_PAYLOADS = [
+    "' OR '1'='1", "' OR 1=1--", "admin'--", "admin'/*",
+    "../../../../etc/passwd", "..\\..\\..\\..\\windows\\win.ini",
+    "<script>alert(1)</script>", "{{7*7}}", "${7*7}", "<%= 7*7 %>",
+    "0", "1", "1337", "-1", "999999", "true", "false", "null", "undefined",
+    "%00", "%0a", "%0d", "%20", "%27", "%22"
+]
 
 FUZZ_MARKERS = ["§FUZZ§", "§fuzz§", "{FUZZ}", "{fuzz}", "FUZZ", "fzz"]
 
@@ -51,13 +60,14 @@ class RepeaterEngine:
         self,
         method: str,
         url: str,
-        headers: Dict[str, str],
+        headers: Optional[Dict[str, str]] = None,
         body: str = "",
         timeout: float = 10.0,
         follow_redirects: bool = True
     ) -> RepeaterResponse:
         client_cookies: Dict[str, str] = {}
         cleaned_headers: Dict[str, str] = {}
+        headers = headers or {}
 
         # Extract explicit Cookie header into dict so httpx maintains it across redirects
         for k, v in headers.items():
@@ -156,7 +166,8 @@ class RepeaterEngine:
                     status_code=res.status_code,
                     length=res.content_length,
                     elapsed_ms=res.elapsed_ms,
-                    flags=res.flags
+                    flags=res.flags,
+                    body=res.body
                 ))
 
         tasks = [worker(p) for p in payloads]
@@ -172,8 +183,30 @@ class RepeaterEngine:
 
         return sorted(results, key=sort_key)
 
+    send = send_request
+
+    async def fuzz(
+        self,
+        method: str,
+        url: str,
+        headers: Optional[Dict[str, str]] = None,
+        body: str = "",
+        payloads: Optional[List[str]] = None,
+        concurrency: int = 10,
+        follow_redirects: bool = True
+    ) -> List[FuzzResult]:
+        active_payloads = list(payloads) if payloads else list(DEFAULT_FUZZ_PAYLOADS)
+        headers = headers or {}
+        if not has_fuzz_marker(url) and not has_fuzz_marker(body) and not any(has_fuzz_marker(v) for v in headers.values()):
+            if "?" in url:
+                url += "&fuzz=§FUZZ§"
+            else:
+                url = url.rstrip("/") + "/?fuzz=§FUZZ§"
+        return await self.run_fuzzer(method, url, headers, body, active_payloads, concurrency=concurrency, follow_redirects=follow_redirects)
+
     @staticmethod
-    def to_curl(method: str, url: str, headers: Dict[str, str], body: str) -> str:
+    def to_curl(method: str, url: str, headers: Optional[Dict[str, str]] = None, body: str = "") -> str:
+        headers = headers or {}
         parts = [f"curl -i -X {method.upper()} '{url}'"]
         for k, v in headers.items():
             parts.append(f"-H '{k}: {v}'")
@@ -183,7 +216,8 @@ class RepeaterEngine:
         return " \\\n  ".join(parts)
 
     @staticmethod
-    def to_python_requests(method: str, url: str, headers: Dict[str, str], body: str) -> str:
+    def to_python_requests(method: str, url: str, headers: Optional[Dict[str, str]] = None, body: str = "") -> str:
+        headers = headers or {}
         code = [
             "import requests",
             "",
@@ -198,6 +232,8 @@ class RepeaterEngine:
         code.append("print('Status:', response.status_code)")
         code.append("print('Response:\\n', response.text)")
         return "\n".join(code)
+
+    to_python = to_python_requests
 
     @staticmethod
     def diff_responses(resp_a: str, resp_b: str, label_a: str = "Resp A", label_b: str = "Resp B") -> str:

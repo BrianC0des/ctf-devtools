@@ -1,11 +1,22 @@
 from __future__ import annotations
 """JavaScript Interactive Console & Deobfuscation Engine for CTFs."""
 import asyncio
+from dataclasses import dataclass
+import html
 import json
 import re
 import shutil
 import subprocess
-from typing import Dict, List, Optional, Tuple
+import time
+import urllib.parse
+from typing import Dict, List, Optional, Tuple, Any, Union
+
+@dataclass
+class JSEvalResult:
+    success: bool
+    output: str
+    error: str
+    elapsed_ms: float
 
 NODE_RUNNER_SCRIPT = r"""
 const vm = require('vm');
@@ -167,6 +178,47 @@ class JSConsoleEngine:
         except Exception as e:
             return ("", f"[Subprocess Exception]: {str(e)}", True)
 
+    async def evaluate(self, code: str, flag_tracker: Optional[Any] = None, url: str = "", cookies: str = "") -> JSEvalResult:
+        """High-level evaluation returning JSEvalResult with auto flag scanning."""
+        t0 = time.perf_counter()
+        logs, ret, is_err = await self.eval_js(code, url=url, cookies=cookies)
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+
+        output_parts = []
+        if logs:
+            output_parts.append(logs)
+        if ret:
+            output_parts.append(f"=> {ret}")
+        full_output = "\n".join(output_parts)
+        error_msg = ret if is_err else ""
+        if is_err and not full_output:
+            full_output = ret or ""
+
+        if flag_tracker and hasattr(flag_tracker, "scan"):
+            flag_tracker.scan(full_output + "\n" + error_msg)
+
+        return JSEvalResult(
+            success=not is_err,
+            output=full_output,
+            error=error_msg,
+            elapsed_ms=round(elapsed_ms, 1)
+        )
+
+    async def preload_target_scripts(self, urls: List[str]) -> int:
+        """Fetches and preloads external target scripts into sandbox environment."""
+        import httpx
+        count = 0
+        async with httpx.AsyncClient(verify=False, timeout=8.0) as client:
+            for u in urls:
+                try:
+                    r = await client.get(u)
+                    if r.status_code == 200 and r.text:
+                        self.add_preloaded_script(u, r.text)
+                        count += 1
+                except Exception:
+                    pass
+        return count
+
 
 def deobfuscate_javascript(code: str) -> str:
     """
@@ -222,12 +274,43 @@ def deobfuscate_javascript(code: str) -> str:
     return code
 
 
-def generate_csrf_poc(method: str, url: str, fields: Dict[str, str]) -> str:
-    """Generates a standalone auto-submitting HTML CSRF exploit PoC."""
-    method = method.upper() if method else "POST"
+def generate_csrf_poc(arg1: str, arg2: str, arg3: Union[Dict[str, str], str, None] = None) -> str:
+    """
+    Generates a standalone auto-submitting HTML CSRF exploit PoC.
+    Accepts either (method, url, fields/body) or (url, method, fields/body).
+    """
+    if arg1.upper() in ("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"):
+        method = arg1.upper()
+        url = arg2
+    else:
+        url = arg1
+        method = arg2.upper() if arg2 else "POST"
+
+    fields: Dict[str, str] = {}
+    if isinstance(arg3, dict):
+        fields = dict(arg3)
+    elif isinstance(arg3, str) and arg3.strip():
+        raw_body = arg3.strip()
+        if raw_body.startswith("{") and raw_body.endswith("}"):
+            try:
+                parsed_json = json.loads(raw_body)
+                if isinstance(parsed_json, dict):
+                    fields = {k: str(v) for k, v in parsed_json.items()}
+            except Exception:
+                fields = {"data": raw_body}
+        else:
+            for pair in raw_body.split("&"):
+                if "=" in pair:
+                    k, v = pair.split("=", 1)
+                    fields[urllib.parse.unquote_plus(k)] = urllib.parse.unquote_plus(v)
+                elif pair:
+                    fields[urllib.parse.unquote_plus(pair)] = ""
+
     inputs_html = []
     for k, v in fields.items():
-        inputs_html.append(f'      <input type="hidden" name="{k}" value="{v}" />')
+        escaped_k = html.escape(str(k))
+        escaped_v = html.escape(str(v))
+        inputs_html.append(f'      <input type="hidden" name="{escaped_k}" value="{escaped_v}" />')
     inputs_str = "\n".join(inputs_html) if inputs_html else '      <!-- No fields specified -->'
 
     return f"""<!DOCTYPE html>
@@ -236,8 +319,8 @@ def generate_csrf_poc(method: str, url: str, fields: Dict[str, str]) -> str:
     <title>CTF CSRF Exploit PoC</title>
   </head>
   <body>
-    <h3>CSRF PoC: {method} {url}</h3>
-    <form id="csrf-form" action="{url}" method="{method}">
+    <h3>CSRF PoC: {method} {html.escape(url)}</h3>
+    <form id="csrf-form" action="{html.escape(url)}" method="{method}">
 {inputs_str}
       <input type="submit" value="Submit Exploit" />
     </form>

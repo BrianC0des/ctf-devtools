@@ -14,6 +14,11 @@ class SessionManager:
             json.dump(data, f, indent=2, ensure_ascii=False)
         return os.path.abspath(self.filename)
 
+    def save_session(self, name: str, data: Dict[str, Any]) -> str:
+        self.challenge_name = name
+        self.filename = f"{name}.ctf.json"
+        return self.save(data)
+
     def load(self) -> Dict[str, Any]:
         if not os.path.exists(self.filename):
             return {}

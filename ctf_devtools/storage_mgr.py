@@ -69,6 +69,18 @@ class CookieAndStorageManager:
         if name in self.cookies:
             del self.cookies[name]
 
+    del_cookie = delete_cookie
+
+    @property
+    def local_storage(self) -> List[Dict[str, str]]:
+        """Returns harvested localStorage entries."""
+        return [item for item in self.harvested_storage if "localStorage" in item.get("api", "")]
+
+    @property
+    def session_storage(self) -> List[Dict[str, str]]:
+        """Returns harvested sessionStorage entries."""
+        return [item for item in self.harvested_storage if "sessionStorage" in item.get("api", "")]
+
     def get_cookie_header(self) -> str:
         """Returns standard Cookie: name=value; name2=value2 string."""
         if not self.cookies:
@@ -78,6 +90,8 @@ class CookieAndStorageManager:
     def set_global_header(self, name: str, value: str):
         """Sets a global header (e.g. Authorization or X-Forwarded-For)."""
         self.global_headers[name.strip()] = value.strip()
+
+    set_header = set_global_header
 
     def remove_global_header(self, name: str):
         """Removes a global header."""
@@ -98,9 +112,11 @@ class CookieAndStorageManager:
                 merged["Cookie"] = cookie_hdr
         return merged
 
-    def decode_cookie_value(self, value: str) -> str:
+    def decode_cookie_value(self, value: Union[str, Dict[str, Any]]) -> str:
         """Attempts to intelligently decode a cookie value (JWT, Flask, Base64)."""
-        clean = value.strip()
+        if isinstance(value, dict):
+            value = value.get("value", "")
+        clean = str(value).strip()
         # 1. Test JWT
         jwt_res = inspect_jwt(clean)
         if jwt_res.get("valid_jwt"):

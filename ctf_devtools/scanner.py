@@ -64,6 +64,70 @@ class ScanResult:
     is_interesting: bool
     body: str = ""
 
+    @property
+    def body_snippet(self) -> str:
+        return self.snippet or (self.body[:150].replace('\n', ' ').strip() if self.body else "")
+
+def detect_templates_and_frameworks(
+    headers: Dict[str, str],
+    cookies: Optional[Dict[str, Any]] = None,
+    html_body: str = ""
+) -> Dict[str, str]:
+    """Passively detects web frameworks and template engines based on HTTP headers, cookies, and DOM markers."""
+    findings: Dict[str, str] = {}
+    hdrs_lower = {str(k).lower(): str(v).lower() for k, v in (headers or {}).items()}
+    cookie_keys = set()
+    if cookies:
+        cookie_keys = {str(k).lower() for k in cookies.keys()}
+        for k, v in cookies.items():
+            if isinstance(v, dict) and "name" in v:
+                cookie_keys.add(str(v["name"]).lower())
+
+    server = hdrs_lower.get("server", "")
+    powered = hdrs_lower.get("x-powered-by", "")
+
+    # Python / Flask / Jinja2
+    if "werkzeug" in server or "flask" in powered or ("session" in cookie_keys and any(".eJ" in str(v) for v in (cookies.values() if cookies else []))):
+        findings["Framework"] = "Flask (Python)"
+        findings["Template Engine"] = "Jinja2"
+    elif "django" in powered or "csrftoken" in cookie_keys or "sessionid" in cookie_keys:
+        findings["Framework"] = "Django (Python)"
+        findings["Template Engine"] = "Django Template Language (DTL)"
+    elif "tornado" in server:
+        findings["Framework"] = "Tornado (Python)"
+        findings["Template Engine"] = "Tornado Templates"
+
+    # PHP / Laravel / Twig / Blade
+    if "php" in powered or "phpsessid" in cookie_keys or ".php" in server:
+        if "laravel" in powered or "laravel_session" in cookie_keys or "xsrf-token" in hdrs_lower:
+            findings["Framework"] = "Laravel (PHP)"
+            findings["Template Engine"] = "Blade / Twig"
+        elif "Framework" not in findings:
+            findings["Framework"] = f"PHP ({powered or 'Standard'})"
+            findings["Template Engine"] = "PHP / Twig / Smarty"
+
+    # Node.js / Express / EJS
+    if "express" in powered or "connect.sid" in cookie_keys:
+        findings["Framework"] = "Express (Node.js)"
+        findings["Template Engine"] = "EJS / Pug / Handlebars"
+
+    # Java / Spring / Thymeleaf
+    if "jsessionid" in cookie_keys or "spring" in powered or "tomcat" in server:
+        findings["Framework"] = "Spring Boot / Java"
+        findings["Template Engine"] = "Thymeleaf / JSP / Freemarker"
+
+    # Ruby on Rails / ERB
+    if "_rails_session" in cookie_keys or "phusion passenger" in server:
+        findings["Framework"] = "Ruby on Rails"
+        findings["Template Engine"] = "ERB / Slim"
+
+    # ASP.NET / Razor
+    if "asp.net" in powered or "iis" in server or "asp.net_sessionid" in cookie_keys:
+        findings["Framework"] = "ASP.NET / C#"
+        findings["Template Engine"] = "Razor"
+
+    return findings
+
 class CTFScanner:
     def __init__(self, base_url: str, flag_tracker: Optional[FlagTracker] = None, timeout: float = 6.0, cookie_storage: Optional[Any] = None):
         self.base_url = base_url.rstrip('/')
@@ -72,6 +136,7 @@ class CTFScanner:
         self.cookie_storage = cookie_storage
         self.results: List[ScanResult] = []
         self.tech_stack: Dict[str, str] = {}
+        self.framework_info: Dict[str, str] = {}
         self.soft_404_len: Optional[int] = None
 
     async def check_soft_404(self, client: httpx.AsyncClient):
@@ -134,6 +199,12 @@ class CTFScanner:
                             self.cookie_storage.parse_set_cookie(sc)
                     for sc in base_resp.headers.get_list("set-cookie"):
                         self.cookie_storage.parse_set_cookie(sc)
+
+                # Passive template and framework fingerprinting
+                cookies_dict = self.cookie_storage.cookies if self.cookie_storage else {}
+                self.framework_info = detect_templates_and_frameworks(dict(base_resp.headers), cookies_dict, base_resp.text)
+                for k, v in self.framework_info.items():
+                    self.tech_stack[f"Detected {k}"] = v
             except Exception:
                 pass
 

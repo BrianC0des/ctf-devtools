@@ -2,14 +2,116 @@ from __future__ import annotations
 """DOM, HTML comments, forms, and asset/file extraction."""
 import re
 import urllib.parse
-from typing import List, Dict, Any
+from dataclasses import dataclass, field
+from typing import List, Dict, Any, Optional
+import httpx
 from bs4 import BeautifulSoup, Comment
 
+@dataclass
+class DOMResponse:
+    body: str
+    status_code: int = 200
+    headers: Dict[str, str] = field(default_factory=dict)
+
+class CommentItem(str):
+    def __new__(cls, text: str, suspicious: bool = False):
+        obj = super().__new__(cls, text)
+        obj.suspicious = suspicious
+        return obj
+
+    def __getitem__(self, key):
+        if key == "comment":
+            return str(self)
+        if key == "suspicious":
+            return self.suspicious
+        return super().__getitem__(key)
+
 class DOMAnalyzer:
-    def __init__(self, html_content: str, base_url: str = ""):
-        self.html = html_content
+    def __init__(
+        self,
+        target_or_html: str,
+        flag_tracker: Optional[Any] = None,
+        cookie_storage: Optional[Any] = None,
+        base_url: str = ""
+    ):
+        # Support legacy / test_suite signature: DOMAnalyzer(html_content, base_url="")
+        if isinstance(flag_tracker, str):
+            base_url = flag_tracker
+            flag_tracker = None
+
+        self.flag_tracker = flag_tracker
+        self.cookie_storage = cookie_storage
+        self.url = ""
         self.base_url = base_url
-        self.soup = BeautifulSoup(html_content, "html.parser")
+        self.html = ""
+
+        # Determine whether target_or_html is raw HTML or a URL
+        is_html = (
+            "<" in target_or_html
+            or "\n" in target_or_html
+            or target_or_html.strip().startswith("<!DOCTYPE")
+        )
+
+        if is_html:
+            self.html = target_or_html
+            self.base_url = base_url
+            self.soup = BeautifulSoup(self.html, "html.parser")
+        else:
+            raw_url = target_or_html.strip()
+            if raw_url and not (raw_url.startswith("http://") or raw_url.startswith("https://")):
+                raw_url = f"http://{raw_url}"
+            self.url = raw_url
+            self.base_url = base_url or self.url
+            self.soup = BeautifulSoup("", "html.parser")
+
+    async def fetch_and_parse(self, timeout: float = 10.0) -> DOMResponse:
+        """Fetches the target URL asynchronously and parses DOM elements, forms, and comments."""
+        if not self.url:
+            if not self.soup or not self.soup.contents:
+                self.soup = BeautifulSoup(self.html, "html.parser")
+            return DOMResponse(body=self.html, status_code=200, headers={})
+
+        headers: Dict[str, str] = {}
+        if self.cookie_storage and hasattr(self.cookie_storage, "get_merged_headers"):
+            headers = self.cookie_storage.get_merged_headers()
+        headers.setdefault("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) CTF-DevTools/1.0")
+
+        async with httpx.AsyncClient(verify=False, timeout=timeout, follow_redirects=True) as client:
+            r = await client.get(self.url, headers=headers)
+            self.html = r.text
+            self.soup = BeautifulSoup(self.html, "html.parser")
+            self.base_url = str(r.url)
+
+            # Store cookies if cookie_storage present
+            if self.cookie_storage and hasattr(self.cookie_storage, "parse_set_cookie"):
+                for h in getattr(r, "history", []):
+                    for sc in h.headers.get_list("set-cookie"):
+                        self.cookie_storage.parse_set_cookie(sc)
+                for sc in r.headers.get_list("set-cookie"):
+                    self.cookie_storage.parse_set_cookie(sc)
+
+            # Scan flags if flag_tracker present
+            if self.flag_tracker and hasattr(self.flag_tracker, "scan"):
+                self.flag_tracker.scan(self.html)
+
+            return DOMResponse(
+                body=self.html,
+                status_code=r.status_code,
+                headers=dict(r.headers)
+            )
+
+    @property
+    def comments(self) -> List[CommentItem]:
+        raw = self.extract_comments()
+        return [CommentItem(c["comment"], c.get("suspicious", False)) for c in raw]
+
+    @property
+    def forms(self) -> List[Dict[str, Any]]:
+        return self.extract_forms()
+
+    @property
+    def parameters(self) -> List[Dict[str, Any]]:
+        return self.extract_parameters()
 
     def extract_comments(self) -> List[Dict[str, Any]]:
         comments = []
@@ -49,6 +151,42 @@ class DOMAnalyzer:
                 "inputs": inputs
             })
         return forms
+
+    def extract_parameters(self) -> List[Dict[str, Any]]:
+        """Extracts URL query parameters and HTML form fields into a unified list."""
+        parameters = []
+        
+        # 1. URL Query Parameters
+        if self.base_url and "?" in self.base_url:
+            parsed = urllib.parse.urlparse(self.base_url)
+            qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            for key, values in qs.items():
+                for val in values:
+                    parameters.append({
+                        "source": "URL Query",
+                        "method": "GET",
+                        "name": key,
+                        "type": "query",
+                        "value": val,
+                        "target_url": self.base_url,
+                        "form_all_inputs": []
+                    })
+
+        # 2. Form Inputs
+        for form in self.extract_forms():
+            action_url = urllib.parse.urljoin(self.base_url, form["action"]) if self.base_url else (form["action"] or "/")
+            for inp in form["inputs"]:
+                if inp["name"]:
+                    parameters.append({
+                        "source": f"Form ({form['action'] or '/'})",
+                        "method": form["method"],
+                        "name": inp["name"],
+                        "type": inp["type"],
+                        "value": inp["value"],
+                        "target_url": action_url,
+                        "form_all_inputs": form["inputs"]
+                    })
+        return parameters
 
     def extract_assets(self) -> List[Dict[str, str]]:
         assets = []

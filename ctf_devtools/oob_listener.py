@@ -2,7 +2,7 @@ from __future__ import annotations
 """Local Out-Of-Band (OOB) HTTP callback listener for Blind SSRF and XSS."""
 import asyncio
 from datetime import datetime
-from typing import List, Dict, Callable, Optional
+from typing import List, Dict, Callable, Optional, Any
 
 class OOBRequest:
     def __init__(self, client_ip: str, method: str, path: str, headers: Dict[str, str], body: str):
@@ -14,12 +14,33 @@ class OOBRequest:
         self.body = body
 
 class OOBListener:
-    def __init__(self, port: int = 9999, on_hit: Optional[Callable[[OOBRequest], None]] = None):
+    def __init__(
+        self,
+        port: int = 9999,
+        on_hit_or_tracker: Optional[Any] = None,
+        flag_tracker: Optional[Any] = None,
+        on_hit: Optional[Callable[[OOBRequest], None]] = None,
+    ):
         self.port = port
         self.on_hit = on_hit
+        self.flag_tracker = flag_tracker
+
+        if hasattr(on_hit_or_tracker, "scan"):
+            self.flag_tracker = on_hit_or_tracker
+        elif callable(on_hit_or_tracker) and self.on_hit is None:
+            self.on_hit = on_hit_or_tracker
+
         self.hits: List[OOBRequest] = []
         self.server: Optional[asyncio.Server] = None
         self.is_running = False
+
+    @property
+    def running(self) -> bool:
+        return self.is_running
+
+    @property
+    def requests(self) -> List[OOBRequest]:
+        return self.hits
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         try:
@@ -64,6 +85,10 @@ class OOBListener:
                 body=body
             )
             self.hits.append(hit)
+
+            if self.flag_tracker and hasattr(self.flag_tracker, "scan"):
+                self.flag_tracker.scan(f"{path}\n{body}\n{str(headers)}")
+
             if self.on_hit:
                 self.on_hit(hit)
 
@@ -84,11 +109,16 @@ class OOBListener:
             except Exception:
                 pass
 
-    async def start(self):
+    async def start(self) -> bool:
         if self.is_running:
-            return
-        self.server = await asyncio.start_server(self._handle_client, '0.0.0.0', self.port)
-        self.is_running = True
+            return True
+        try:
+            self.server = await asyncio.start_server(self._handle_client, '0.0.0.0', self.port)
+            self.is_running = True
+            return True
+        except Exception:
+            self.is_running = False
+            return False
 
     async def stop(self):
         if self.server:

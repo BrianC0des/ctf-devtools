@@ -171,3 +171,31 @@ class CommentsGatherer:
             lines.append("└" + "─" * 60 + "\n")
 
         return "\n".join(lines)
+
+    def scan_secrets(self) -> List[Dict[str, str]]:
+        """Scans all gathered comments for high-confidence secrets, tokens, credentials, and flags."""
+        patterns = [
+            ("Flag Pattern", r"(?:flag|ctf|picoctf|htb|thm)\{[^\s\"'<>]+\}"),
+            ("API Key / Token", r"(?:api[_-]?key|secret|token|password|auth|jwt)[\"']?\s*[:=]\s*[\"']?([a-zA-Z0-9_\-\.]{8,})[\"']?"),
+            ("Credential / Password", r"(?:pass|password|pwd|admin)[\"']?\s*[:=]\s*[\"']?([^\s\"',;]+)"),
+            ("Private Key / Secret", r"(?:BEGIN\s+RSA|BEGIN\s+OPENSSH|BEGIN\s+PRIVATE)"),
+            ("Internal Path / Route", r"(\/(?:api|v[0-9]|admin|debug|internal|console)[a-zA-Z0-9_\-\.\/]*)"),
+        ]
+        secrets = []
+        seen = set()
+
+        for c in self.comments:
+            raw_text = c.get("comment", "")
+            origin = c.get("origin", self.base_url)
+            for cat, pat in patterns:
+                for match in re.finditer(pat, raw_text, re.I):
+                    val = match.group(1) if match.groups() else match.group(0)
+                    ident = (cat, val)
+                    if ident not in seen:
+                        seen.add(ident)
+                        secrets.append({
+                            "category": cat,
+                            "source": origin.split("/")[-1] or origin,
+                            "match": val.strip()
+                        })
+        return secrets

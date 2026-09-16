@@ -397,6 +397,8 @@ class CTFDevToolsApp(App):
         self.selected_dom_tag = None
         self._debounce_task = None
         self.downloads_dir = get_default_downloads_dir()
+        self.detected_parameters = []
+        self.selected_parameter = None
 
         # SQLi state
         self.selected_dbms = "SQLite"
@@ -483,8 +485,8 @@ class CTFDevToolsApp(App):
                                     yield Button("To Repeater", id="btn-asset-rep", classes="btn-secondary")
                                 yield TextArea(id="txt-asset-content", read_only=True)
 
-                    # SUBTAB 1.4: Comments & Secrets
-                    with TabPane("Comments & Secrets", id="subtab-comments"):
+                    # SUBTAB 1.4: Comments & Inputs
+                    with TabPane("Comments & Inputs", id="subtab-comments"):
                         with Horizontal():
                             with Vertical(classes="card-panel pane-half"):
                                 yield Label("Harvested HTML & JS Comments", classes="card-title")
@@ -493,8 +495,13 @@ class CTFDevToolsApp(App):
                                     yield Button("Scan Secrets", id="btn-scan-comments", classes="btn-accent")
                                 yield TextArea(id="txt-comments", read_only=True)
                             with Vertical(classes="card-panel pane-half"):
-                                yield Label("Discovered Forms & Hidden Inputs", classes="card-title")
-                                yield TextArea(id="txt-forms", read_only=True)
+                                yield Label("Detected Inputs & Form Parameters", classes="card-title")
+                                with Horizontal(classes="sub-bar"):
+                                    yield Button("To Repeater", id="btn-input-to-rep", classes="btn-primary")
+                                    yield Button("To cURL", id="btn-input-to-curl", classes="btn-secondary")
+                                    yield Button("Fuzz Input", id="btn-input-fuzz", classes="btn-accent")
+                                yield DataTable(id="tbl-inputs")
+                                yield TextArea(id="txt-forms", read_only=True, classes="h-short")
 
             # =========================================================
             # WORKSPACE 2: NETWORK (Traffic, Cookies, Spider, WebSockets)
@@ -823,11 +830,14 @@ class CTFDevToolsApp(App):
         tbl_payloads.add_columns("CATEGORY", "TYPE", "NAME", "PAYLOAD")
         self._populate_payloads_table("")
 
+        tbl_inputs = self.query_one("#tbl-inputs", DataTable)
+        tbl_inputs.add_columns("SOURCE", "METHOD", "PARAM", "TYPE", "VALUE")
+
         # Configure all DataTables for single-row selection mode
         for tbl in [
             tbl_recon, tbl_crawled, tbl_assets, tbl_cookies, tbl_storage,
             tbl_oob, tbl_network, tbl_curl, tbl_sqli, tbl_php_h,
-            tbl_php_w, tbl_payloads
+            tbl_php_w, tbl_payloads, tbl_inputs
         ]:
             tbl.cursor_type = "row"
 
@@ -932,6 +942,8 @@ class CTFDevToolsApp(App):
             self.load_selected_php_hash(row_idx)
         elif table_id == "tbl-payloads":
             self.load_selected_payload_item(row_idx)
+        elif table_id == "tbl-inputs":
+            self.display_selected_input(row_idx)
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         self._handle_table_row_action(event.data_table.id, event.cursor_row)
@@ -1122,6 +1134,13 @@ class CTFDevToolsApp(App):
             await self.action_refresh_comments()
         elif bid == "btn-scan-comments":
             self.action_scan_comments_secrets()
+        # Input & parameter buttons
+        elif bid == "btn-input-to-rep":
+            self.action_input_to_repeater()
+        elif bid == "btn-input-to-curl":
+            self.action_input_to_curl()
+        elif bid == "btn-input-fuzz":
+            self.action_input_fuzz()
         # Storage & Cookie buttons
         elif bid == "btn-set-cookie":
             self.action_set_cookie()
@@ -1198,6 +1217,10 @@ class CTFDevToolsApp(App):
             self.notify("Please enter a target URL", severity="warning")
             return
 
+        if not (url.startswith("http://") or url.startswith("https://")):
+            url = f"http://{url}"
+            self.query_one("#target-url", Input).value = url
+
         self.initial_url = url
         self.query_one("#rep-url", Input).value = url
         self.notify(f"Analyzing {url}...", timeout=2)
@@ -1215,9 +1238,24 @@ class CTFDevToolsApp(App):
         tree = self.query_one("#tree-dom", Tree)
         build_dom_tree(tree, resp.body, hidden_only=self.dom_hidden_only)
 
-        # 1. Update Comments & Hidden Forms
+        # 1. Update Comments, Hidden Forms, and Detected Inputs
         comm_lines = [f"• {c}" for c in dom.comments]
         self.query_one("#txt-comments", TextArea).text = "\n".join(comm_lines) if comm_lines else "No HTML comments found."
+
+        self.detected_parameters = dom.parameters
+        try:
+            tbl_inputs = self.query_one("#tbl-inputs", DataTable)
+            tbl_inputs.clear()
+            for p in self.detected_parameters:
+                tbl_inputs.add_row(
+                    p["source"],
+                    p["method"],
+                    p["name"],
+                    p["type"],
+                    str(p["value"])[:30] if p["value"] else ""
+                )
+        except Exception:
+            pass
 
         form_lines = []
         for f in dom.forms:
@@ -1260,11 +1298,17 @@ class CTFDevToolsApp(App):
         self.comments_gatherer = cg
         await cg.gather_all(html_body)
         self.raw_comments_report = cg.format_report()
-        self.query_one("#txt-comments", TextArea).text = self.raw_comments_report
-        self.update_flag_display()
+        try:
+            self.query_one("#txt-comments", TextArea).text = self.raw_comments_report
+            self.update_flag_display()
+        except Exception:
+            pass
 
     async def action_run_scanner(self):
-        url = self.query_one("#target-url", Input).value.strip()
+        try:
+            url = self.query_one("#target-url", Input).value.strip()
+        except Exception:
+            return
         if not url:
             return
         self.notify("Running CTF Recon Scanner in background...", timeout=2)
@@ -1272,17 +1316,20 @@ class CTFDevToolsApp(App):
         results = await scanner.scan_all()
         self.probe_results = results
         
-        tbl = self.query_one("#tbl-recon", DataTable)
-        tbl.clear()
-        for r in results:
-            flags = ", ".join(r.flags) if r.flags else "-"
-            snippet = r.body_snippet.replace("\n", " ")[:30] if r.body_snippet else ""
-            tbl.add_row(str(r.status_code), r.path, f"{r.content_length}b", flags, snippet)
-        
-        # Display tech stack
-        tech_lines = [f"{k}: {v}" for k, v in scanner.tech_stack.items()]
-        self.query_one("#txt-tech-stack", TextArea).text = "\n".join(tech_lines) if tech_lines else "No sensitive disclosure headers."
-        self.update_flag_display()
+        try:
+            tbl = self.query_one("#tbl-recon", DataTable)
+            tbl.clear()
+            for r in results:
+                flags = ", ".join(r.flags) if r.flags else "-"
+                snippet = r.body_snippet.replace("\n", " ")[:30] if r.body_snippet else ""
+                tbl.add_row(str(r.status_code), r.path, f"{r.content_length}b", flags, snippet)
+            
+            # Display tech stack
+            tech_lines = [f"{k}: {v}" for k, v in scanner.tech_stack.items()]
+            self.query_one("#txt-tech-stack", TextArea).text = "\n".join(tech_lines) if tech_lines else "No sensitive disclosure headers."
+            self.update_flag_display()
+        except Exception:
+            pass
 
         # Automatically inspect the first discovered sensitive file
         if results:
@@ -1328,7 +1375,8 @@ class CTFDevToolsApp(App):
             return
         outer = str(self.selected_dom_tag)
         self._copy_to_system_clipboard(outer)
-        self.notify(f"Copied <{self.selected_dom_tag.name}> outer HTML to clipboard!")
+        tag_name = getattr(self.selected_dom_tag, "name", "node")
+        self.notify(f"Copied <{tag_name}> outer HTML to clipboard!")
 
     # ---------------------------------------------------------
     # Sources, Probes, Downloads
@@ -1579,7 +1627,11 @@ class CTFDevToolsApp(App):
 
     def action_scan_comments_secrets(self):
         if not self.comments_gatherer:
-            return
+            if self.current_html:
+                self.comments_gatherer = CommentsGatherer(self.initial_url or "http://localhost", self.flag_tracker)
+            else:
+                self.notify("Load a page first to scan comments for secrets", severity="warning")
+                return
         secrets = self.comments_gatherer.scan_secrets()
         if secrets:
             lines = [f"• [{s['category']}] ({s['source']}): {s['match']}" for s in secrets]
@@ -1589,13 +1641,145 @@ class CTFDevToolsApp(App):
             self.notify("No obvious API keys or credentials detected in comments")
 
     # ---------------------------------------------------------
+    # Detected Input Parameters Actions
+    # ---------------------------------------------------------
+    def display_selected_input(self, row_idx: int) -> None:
+        if 0 <= row_idx < len(self.detected_parameters):
+            self.selected_parameter = self.detected_parameters[row_idx]
+
+    def _get_current_selected_parameter(self) -> Optional[Dict[str, Any]]:
+        if self.selected_parameter:
+            return self.selected_parameter
+        try:
+            tbl = self.query_one("#tbl-inputs", DataTable)
+            if 0 <= tbl.cursor_row < len(self.detected_parameters):
+                return self.detected_parameters[tbl.cursor_row]
+        except Exception:
+            pass
+        return None
+
+    def action_input_to_repeater(self) -> None:
+        param = self._get_current_selected_parameter()
+        if not param:
+            self.notify("Select an input parameter from the table first", severity="warning")
+            return
+
+        target_url = param["target_url"] or self.initial_url
+        method = param["method"].upper()
+        self.query_one("#rep-method", Input).value = method
+
+        if method == "GET":
+            parsed = urllib.parse.urlparse(target_url)
+            qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            if param["name"] not in qs:
+                qs[param["name"]] = [param["value"] or ""]
+            new_query = urllib.parse.urlencode(qs, doseq=True)
+            new_url = urllib.parse.urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
+            self.query_one("#rep-url", Input).value = new_url
+            self.query_one("#rep-body", TextArea).text = ""
+        else:
+            self.query_one("#rep-url", Input).value = target_url
+            all_inputs = param.get("form_all_inputs", [])
+            if all_inputs:
+                pairs = []
+                for inp in all_inputs:
+                    k = inp.get("name", "")
+                    if k:
+                        v = inp.get("value", "")
+                        pairs.append(f"{urllib.parse.quote_plus(k)}={urllib.parse.quote_plus(str(v))}")
+                body_data = "&".join(pairs)
+            else:
+                body_data = f"{urllib.parse.quote_plus(param['name'])}={urllib.parse.quote_plus(str(param['value']))}"
+            self.query_one("#rep-body", TextArea).text = body_data
+            self.query_one("#rep-headers", TextArea).text = "Content-Type: application/x-www-form-urlencoded"
+
+        self.action_jump_workspace("tab-repeater")
+        self.notify(f"Loaded parameter '{param['name']}' into Repeater!")
+
+    def action_input_to_curl(self) -> None:
+        param = self._get_current_selected_parameter()
+        if not param:
+            self.notify("Select an input parameter from the table first", severity="warning")
+            return
+
+        target_url = param["target_url"] or self.initial_url
+        method = param["method"].upper()
+        p_name = param["name"]
+        p_val = param["value"] or ""
+
+        if method == "GET":
+            cmd = f'curl -i -k -G "{target_url.split("?")[0]}" --data-urlencode "{p_name}={p_val}"'
+        else:
+            all_inputs = param.get("form_all_inputs", [])
+            if all_inputs:
+                pairs = [f"{inp.get('name', '')}={inp.get('value', '')}" for inp in all_inputs if inp.get("name")]
+                post_body = "&".join(pairs)
+            else:
+                post_body = f"{p_name}={p_val}"
+            cmd = f'curl -i -k -X POST "{target_url}" -H "Content-Type: application/x-www-form-urlencoded" -d "{post_body}"'
+
+        self.query_one("#txt-curl-cmd", TextArea).text = cmd
+        self.action_jump_workspace("tab-repeater")
+        try:
+            self.query_one("#tab-repeater TabbedContent", TabbedContent).active = "subtab-curl"
+        except Exception:
+            pass
+        self.notify(f"Generated cURL command for '{p_name}'!")
+
+    def action_input_fuzz(self) -> None:
+        param = self._get_current_selected_parameter()
+        if not param:
+            self.notify("Select an input parameter from the table first", severity="warning")
+            return
+
+        target_url = param["target_url"] or self.initial_url
+        method = param["method"].upper()
+        self.query_one("#rep-method", Input).value = method
+
+        if method == "GET":
+            parsed = urllib.parse.urlparse(target_url)
+            qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            qs[param["name"]] = ["§FUZZ§"]
+            new_query = urllib.parse.urlencode(qs, doseq=True).replace("%C2%A7FUZZ%C2%A7", "§FUZZ§")
+            new_url = urllib.parse.urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
+            self.query_one("#rep-url", Input).value = new_url
+            self.query_one("#rep-body", TextArea).text = ""
+        else:
+            self.query_one("#rep-url", Input).value = target_url
+            all_inputs = param.get("form_all_inputs", [])
+            if all_inputs:
+                pairs = []
+                for inp in all_inputs:
+                    k = inp.get("name", "")
+                    if k:
+                        v = "§FUZZ§" if k == param["name"] else str(inp.get("value", ""))
+                        pairs.append(f"{k}={v}")
+                body_data = "&".join(pairs)
+            else:
+                body_data = f"{param['name']}=§FUZZ§"
+            self.query_one("#rep-body", TextArea).text = body_data
+            self.query_one("#rep-headers", TextArea).text = "Content-Type: application/x-www-form-urlencoded"
+
+        self.action_jump_workspace("tab-repeater")
+        self.notify(f"Inserted §FUZZ§ marker for '{param['name']}' in Repeater!")
+
+    # ---------------------------------------------------------
     # Cookie & Storage Management
     # ---------------------------------------------------------
     def update_cookies_display(self):
         tbl = self.query_one("#tbl-cookies", DataTable)
         tbl.clear()
-        for name, val in self.cookie_storage.cookies.items():
-            tbl.add_row(name, val[:30] + ("..." if len(val) > 30 else ""), "/", "False")
+        for name, entry in self.cookie_storage.cookies.items():
+            if isinstance(entry, dict):
+                v_str = str(entry.get("value", ""))
+                path_str = str(entry.get("path", "/"))
+                http_only = str(entry.get("httponly", False))
+            else:
+                v_str = str(entry)
+                path_str = "/"
+                http_only = "False"
+            snippet = v_str[:30] + ("..." if len(v_str) > 30 else "")
+            tbl.add_row(name, snippet, path_str, http_only)
 
     def update_storage_display(self):
         tbl = self.query_one("#tbl-storage", DataTable)
@@ -1627,6 +1811,8 @@ class CTFDevToolsApp(App):
         if 0 <= row_idx < len(names):
             name = names[row_idx]
             val = self.cookie_storage.cookies[name]
+            if isinstance(val, dict):
+                val = str(val.get("value", ""))
         else:
             val = self.query_one("#inp-cookie-val", Input).value.strip()
 
@@ -1909,6 +2095,10 @@ class CTFDevToolsApp(App):
         cmd = f'curl -i -k -G "{target.rstrip("/")}/" --data-urlencode "id={payload}"'
         self.query_one("#txt-curl-cmd", TextArea).text = cmd
         self.action_jump_workspace("tab-repeater")
+        try:
+            self.query_one("#tab-repeater TabbedContent", TabbedContent).active = "subtab-curl"
+        except Exception:
+            pass
         self.notify("Sent SQL payload to cURL Studio!")
 
     def action_copy_sqli_payload(self):
@@ -2007,6 +2197,10 @@ class CTFDevToolsApp(App):
         cmd = f'curl -i -k -X POST "{target.rstrip("/")}/" -d "{payload}"'
         self.query_one("#txt-curl-cmd", TextArea).text = cmd
         self.action_jump_workspace("tab-repeater")
+        try:
+            self.query_one("#tab-repeater TabbedContent", TabbedContent).active = "subtab-curl"
+        except Exception:
+            pass
         self.notify("Sent payload to cURL Studio!")
 
     def action_copy_payload_string(self):
@@ -2272,6 +2466,8 @@ class CTFDevToolsApp(App):
                 subprocess.run(["xclip", "-selection", "clipboard"], input=text.encode(), check=False)
             elif shutil.which("wl-copy"):
                 subprocess.run(["wl-copy"], input=text.encode(), check=False)
+            elif shutil.which("pbcopy"):
+                subprocess.run(["pbcopy"], input=text.encode(), check=False)
             elif shutil.which("clip"):
                 subprocess.run(["clip"], input=text.encode(), check=False)
         except Exception:

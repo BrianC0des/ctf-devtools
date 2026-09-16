@@ -57,13 +57,17 @@ def build_dom_tree(
     html: str,
     search_query: str = "",
     hidden_only: bool = False,
-    flag_tracker = None
+    flag_tracker = None,
+    filter_query: Optional[str] = None,
 ):
     """Parses HTML and builds a recursive, expandable tree in Textual."""
     tree.clear()
     if not html or not html.strip():
         tree.root.set_label("Document (Empty HTML)")
         return
+
+    if filter_query is not None:
+        search_query = filter_query
 
     soup = BeautifulSoup(html, 'html.parser')
     tree.root.set_label("Document (<!DOCTYPE html>)")
@@ -121,8 +125,11 @@ def build_dom_tree(
     else:
         add_node_recursive(soup, tree.root, depth=0)
 
-def format_tag_details(tag: Tag) -> str:
+def format_tag_details(tag: Any) -> str:
     """Generates a clean metadata summary of the selected element's attributes and flags."""
+    if isinstance(tag, (str, NavigableString)) or not hasattr(tag, "name"):
+        return f"=== TEXT NODE ===\n\nContent:\n{str(tag)}"
+
     lines = [f"=== TAG: <{tag.name.upper()}> ==="]
     
     # Check hidden status
@@ -143,7 +150,7 @@ def format_tag_details(tag: Tag) -> str:
         lines.append("  (No attributes defined)")
 
     # Direct text content
-    direct_text = tag.find(text=True, recursive=False)
+    direct_text = tag.find(string=True, recursive=False)
     if direct_text and direct_text.strip():
         lines.append(f"\n[Direct Text]: {direct_text.strip()[:150]}")
 
